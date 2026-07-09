@@ -63,14 +63,15 @@ export async function POST(req: Request) {
         );
     }
 
-    const { title, description, start_time, end_time, location, type, uniform, rsvp_options } = parsed.data;
+    const { title, description, start_time, end_time, type, uniform, rsvp_options } = parsed.data;
 
+    // No `location` here — the column was dropped (20260310_drop_events_location.sql)
+    // and PostgREST rejects inserts that reference it.
     const eventData = {
         title,
         description: description || null,
         start_time,
         end_time,
-        location: location || null,
         type: type || "Event",
         created_by: session.userId,
         uniform: uniform || "Ambassador Polo with Navy Pants.",
@@ -84,6 +85,7 @@ export async function POST(req: Request) {
         .single();
 
     if (error) {
+        console.error("[events] Insert failed:", error);
         return NextResponse.json({ error: "Request failed" }, { status: 400 });
     }
 
