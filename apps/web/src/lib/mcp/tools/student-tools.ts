@@ -26,13 +26,13 @@ function schema(shape: Record<string, z.ZodTypeAny>) {
 export function registerStudentTools(server: McpServer) {
   // ─── List Events ──────────────────────────────────────
   server.registerTool("list_events", {
-    description: "List upcoming Ambassador events with title, date, location, and type",
+    description: "List upcoming Ambassador events with title, date, and type",
   }, async (extra: any) => {
     getAuth(extra);
     const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("events")
-      .select("id, title, description, start_time, end_time, location, type, uniform")
+      .select("id, title, description, start_time, end_time, type, uniform")
       .gte("end_time", new Date().toISOString())
       .order("start_time", { ascending: true })
       .limit(50);

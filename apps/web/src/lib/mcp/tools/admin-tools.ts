@@ -91,7 +91,6 @@ export function registerAdminTools(server: McpServer) {
       start_time: z.string().describe("Start time (ISO 8601 format)"),
       end_time: z.string().describe("End time (ISO 8601 format)"),
       description: z.string().max(5000).optional().describe("Event description"),
-      location: z.string().max(500).optional().describe("Event location"),
       type: z.string().max(100).optional().describe("Event type (default: Event). e.g., Event, Meeting, Training"),
     }),
   }, async (args: any, extra: any) => {
@@ -114,11 +113,10 @@ export function registerAdminTools(server: McpServer) {
         start_time: args.start_time,
         end_time: args.end_time,
         description: args.description || null,
-        location: args.location || null,
         type: args.type || "Event",
         created_by: userId,
       })
-      .select("id, title, start_time, end_time, location, type")
+      .select("id, title, start_time, end_time, type")
       .single();
 
     if (error) return textResult({ error: error.message });
