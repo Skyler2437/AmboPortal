@@ -80,6 +80,13 @@ export async function POST(req: NextRequest) {
       role: user.role as "basic" | "student" | "admin" | "superadmin" | "applicant",
     });
 
+    // Best-effort so a missing migration or analytics failure never blocks login.
+    try {
+      await supabase.from("users").update({ last_login_at: new Date().toISOString() }).eq("id", user.id);
+    } catch (activityError) {
+      console.error("Failed to record login activity:", activityError);
+    }
+
     return NextResponse.json({ redirect: redirectForRole(user.role) });
   } catch (err) {
     console.error("Login error:", err);

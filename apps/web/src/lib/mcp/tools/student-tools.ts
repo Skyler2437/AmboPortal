@@ -6,10 +6,12 @@ import { SERVICE_TYPES } from "@ambo/database/types";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Extra = any; // RequestHandlerExtra — auth info accessed via extra.authInfo
 
-function getAuth(extra: Extra) {
+function getAuth(extra: Extra, requiredScope: "read" | "write" = "read") {
   const userId = extra.authInfo?.extra?.userId;
   const role = extra.authInfo?.extra?.role;
+  const scopes: string[] = extra.authInfo?.scopes ?? [];
   if (!userId || !role) throw new Error("Unauthorized");
+  if (!scopes.includes(requiredScope)) throw new Error(`${requiredScope} scope required`);
   return { userId, role };
 }
 
@@ -49,7 +51,7 @@ export function registerStudentTools(server: McpServer) {
       status: z.enum(["going", "maybe", "no"]).describe("Your RSVP status"),
     }),
   }, async (args: any, extra: any) => {
-    const { userId } = getAuth(extra);
+    const { userId } = getAuth(extra, "write");
     const supabase = createAdminClient();
 
     const { error } = await supabase
@@ -74,7 +76,7 @@ export function registerStudentTools(server: McpServer) {
       feedback: z.string().optional().describe("Optional feedback or notes about the service"),
     }),
   }, async (args: any, extra: any) => {
-    const { userId, role } = getAuth(extra);
+    const { userId, role } = getAuth(extra, "write");
     if (role !== "student" && role !== "admin" && role !== "superadmin") {
       return textResult({ error: "Only students and admins can submit hours" });
     }
@@ -157,7 +159,7 @@ export function registerStudentTools(server: McpServer) {
       content: z.string().min(1).max(5000).describe("Post content (max 5000 characters)"),
     }),
   }, async (args: any, extra: any) => {
-    const { userId } = getAuth(extra);
+    const { userId } = getAuth(extra, "write");
     const supabase = createAdminClient();
 
     const { data, error } = await supabase

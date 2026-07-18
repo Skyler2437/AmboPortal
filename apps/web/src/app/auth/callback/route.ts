@@ -39,6 +39,15 @@ export async function GET(req: NextRequest) {
       }
 
       if (userProfile) {
+        try {
+          await adminSupabase
+            .from("users")
+            .update({ last_login_at: new Date().toISOString() })
+            .eq("id", userProfile.id);
+        } catch (activityError) {
+          console.error("Failed to record login activity:", activityError);
+        }
+
         await setSessionCookie({
           userId: userProfile.id,
           role: userProfile.role as "student" | "admin" | "superadmin",
