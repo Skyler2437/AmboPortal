@@ -2,6 +2,7 @@ import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { validateAccessToken } from "@/lib/mcp/oauth-store";
 import { registerStudentTools } from "@/lib/mcp/tools/student-tools";
 import { registerAdminTools } from "@/lib/mcp/tools/admin-tools";
+import { getMcpResourceUrl } from "@/lib/mcp/oauth-utils";
 
 // Allow long-running MCP requests on Vercel
 export const maxDuration = 60;
@@ -29,7 +30,7 @@ const handler = createMcpHandler(
 async function verifyToken(_req: Request, bearerToken?: string) {
   if (!bearerToken) return undefined;
 
-  const tokenData = await validateAccessToken(bearerToken);
+  const tokenData = await validateAccessToken(bearerToken, getMcpResourceUrl());
   if (!tokenData) return undefined;
 
   return {

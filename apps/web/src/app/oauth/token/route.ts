@@ -4,7 +4,7 @@ import {
   createTokenPair,
   refreshTokenPair,
 } from "@/lib/mcp/oauth-store";
-import { verifyPkceChallenge } from "@/lib/mcp/oauth-utils";
+import { getMcpResourceUrl, verifyPkceChallenge } from "@/lib/mcp/oauth-utils";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
 }
 
 async function handleAuthorizationCode(params: Record<string, string>) {
-  const { code, client_id, redirect_uri, code_verifier } = params;
+  const { code, client_id, redirect_uri, code_verifier, resource } = params;
 
   if (!code || !client_id || !redirect_uri || !code_verifier) {
     return NextResponse.json(
@@ -79,6 +79,13 @@ async function handleAuthorizationCode(params: Record<string, string>) {
     );
   }
 
+  if (resource !== getMcpResourceUrl() || authCode.resource !== resource) {
+    return NextResponse.json(
+      { error: "invalid_target", error_description: "The requested protected resource is invalid" },
+      { status: 400, headers: CORS_HEADERS }
+    );
+  }
+
   // Verify PKCE challenge
   if (!verifyPkceChallenge(code_verifier, authCode.code_challenge)) {
     return NextResponse.json(
@@ -88,17 +95,24 @@ async function handleAuthorizationCode(params: Record<string, string>) {
   }
 
   // Issue tokens
-  const tokens = await createTokenPair(authCode.client_id, authCode.user_id, authCode.scope);
+  const tokens = await createTokenPair(authCode.client_id, authCode.user_id, authCode.scope, resource);
 
   return NextResponse.json(tokens, { headers: CORS_HEADERS });
 }
 
 async function handleRefreshToken(params: Record<string, string>) {
-  const { refresh_token, client_id } = params;
+  const { refresh_token, client_id, resource } = params;
 
   if (!refresh_token || !client_id) {
     return NextResponse.json(
       { error: "invalid_request", error_description: "Missing required parameters: refresh_token, client_id" },
+      { status: 400, headers: CORS_HEADERS }
+    );
+  }
+
+  if (resource !== getMcpResourceUrl()) {
+    return NextResponse.json(
+      { error: "invalid_target", error_description: "The requested protected resource is invalid" },
       { status: 400, headers: CORS_HEADERS }
     );
   }

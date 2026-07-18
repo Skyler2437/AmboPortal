@@ -42,6 +42,7 @@ export async function createAuthorizationCode(params: {
   redirectUri: string;
   codeChallenge: string;
   scope: string;
+  resource: string;
 }): Promise<string> {
   const supabase = createAdminClient();
   const code = generateToken();
@@ -54,6 +55,7 @@ export async function createAuthorizationCode(params: {
     redirect_uri: params.redirectUri,
     code_challenge: params.codeChallenge,
     scope: params.scope,
+    resource: params.resource,
     expires_at: expiresAt,
   });
 
@@ -92,6 +94,7 @@ export async function consumeAuthorizationCode(code: string) {
     redirect_uri: string;
     code_challenge: string;
     scope: string;
+    resource: string;
   };
 }
 
@@ -100,7 +103,8 @@ export async function consumeAuthorizationCode(code: string) {
 export async function createTokenPair(
   clientId: string,
   userId: string,
-  scope: string
+  scope: string,
+  resource: string
 ): Promise<{
   access_token: string;
   refresh_token: string;
@@ -119,6 +123,7 @@ export async function createTokenPair(
     client_id: clientId,
     user_id: userId,
     scope,
+    resource,
     access_token_expires_at: new Date(now.getTime() + ACCESS_TOKEN_TTL_SECONDS * 1000).toISOString(),
     refresh_token_expires_at: new Date(now.getTime() + REFRESH_TOKEN_TTL_SECONDS * 1000).toISOString(),
   });
@@ -135,20 +140,22 @@ export async function createTokenPair(
 }
 
 export async function validateAccessToken(
-  token: string
+  token: string,
+  resource?: string
 ): Promise<{ userId: string; role: string; scope: string; clientId: string } | null> {
   const supabase = createAdminClient();
 
   // Look up token and join with users to get current role
   const { data, error } = await supabase
     .from("oauth_tokens")
-    .select("user_id, client_id, scope, access_token_expires_at, revoked")
+    .select("user_id, client_id, scope, resource, access_token_expires_at, revoked")
     .eq("access_token", token)
     .single();
 
   if (error || !data) return null;
   if (data.revoked) return null;
   if (new Date(data.access_token_expires_at) < new Date()) return null;
+  if (resource && data.resource !== resource) return null;
 
   // Fetch current role from users table (not stale token data)
   const { data: user, error: userError } = await supabase
@@ -182,7 +189,7 @@ export async function refreshTokenPair(
   // Look up refresh token
   const { data, error } = await supabase
     .from("oauth_tokens")
-    .select("id, user_id, client_id, scope, refresh_token_expires_at, revoked")
+    .select("id, user_id, client_id, scope, resource, refresh_token_expires_at, revoked")
     .eq("refresh_token", refreshToken)
     .single();
 
@@ -195,5 +202,5 @@ export async function refreshTokenPair(
   await supabase.from("oauth_tokens").update({ revoked: true }).eq("id", data.id);
 
   // Create new token pair
-  return createTokenPair(data.client_id, data.user_id, data.scope);
+  return createTokenPair(data.client_id, data.user_id, data.scope, data.resource);
 }
