@@ -6,7 +6,7 @@
         "-y",
         "@supabase/mcp-server-supabase@latest",
         "--project-ref",
-        "YOUR_PROJECT_REF"
+        "lazwwkysaygqkskpbzbd"
       ]
     },
     "vercel": {
