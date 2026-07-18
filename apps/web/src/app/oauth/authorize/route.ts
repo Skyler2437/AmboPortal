@@ -145,6 +145,15 @@ export async function POST(req: NextRequest) {
       return renderError(req, "Invalid email or password.", { clientId, redirectUri, state, codeChallenge, scope });
     }
 
+    try {
+      await supabase
+        .from("users")
+        .update({ last_login_at: new Date().toISOString() })
+        .eq("id", user.id);
+    } catch (activityError) {
+      console.error("Failed to record login activity:", activityError);
+    }
+
     // Create authorization code
     const code = await createAuthorizationCode({
       clientId,
