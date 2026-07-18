@@ -5,7 +5,7 @@ export async function GET() {
   const baseUrl = getBaseUrl();
   return NextResponse.json(
     {
-      resource: `${baseUrl}/api/mcp`,
+      resource: `${baseUrl}/api/mcp/mcp`,
       authorization_servers: [baseUrl],
       scopes_supported: ["read", "write"],
     },
