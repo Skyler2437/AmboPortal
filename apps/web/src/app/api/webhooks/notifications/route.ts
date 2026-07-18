@@ -3,6 +3,7 @@ import {
     sendNotificationToUser,
     sendNotificationToRole,
 } from "@/lib/notifications";
+import { handleChatMessage } from "@/lib/chat-notification";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -87,62 +88,6 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ ok: true });
-}
-
-/**
- * chat_messages INSERT → notify all group participants except the sender
- */
-async function handleChatMessage(record: Record<string, unknown>) {
-    const groupId = record.group_id as string;
-    const senderId = record.sender_id as string;
-    const content = (record.content as string) || "";
-
-    const supabase = createAdminClient();
-
-    const { data: participants, error } = await supabase
-        .from("chat_participants")
-        .select("user_id")
-        .eq("group_id", groupId);
-
-    if (error || !participants) return;
-
-    const recipientIds = participants
-        .map((p) => p.user_id as string)
-        .filter((id) => id !== senderId);
-
-    if (recipientIds.length === 0) return;
-
-    // Get the sender's name and each recipient's role in parallel. The role
-    // determines which side of the app the deep link points at, so an admin
-    // tapping the notification lands on /admin/chat rather than /student/chat
-    // (which middleware would bounce them out of).
-    const [{ data: sender }, { data: recipients }] = await Promise.all([
-        supabase.from("users").select("first_name").eq("id", senderId).single(),
-        supabase.from("users").select("id, role").in("id", recipientIds),
-    ]);
-
-    if (!recipients || recipients.length === 0) return;
-
-    const senderName = sender?.first_name || "Someone";
-    const truncatedBody =
-        content.length > 50 ? `${content.substring(0, 50)}...` : content;
-
-    const promises = recipients.map((r) => {
-        const isAdmin = r.role === "admin" || r.role === "superadmin";
-        // Include the group id so the tap opens the actual thread. Web reads
-        // the active thread from the `?group=` query param (ChatLayout); the
-        // mobile app deep-links to the [id] route inside the chat stack.
-        const webBase = isAdmin ? "/admin" : "/student";
-        const mobileBase = isAdmin ? "/(admin)" : "/(student)";
-        return sendNotificationToUser(r.id, {
-            title: `${senderName}`,
-            body: truncatedBody,
-            url: `${webBase}/chat?group=${groupId}`,
-            mobilePath: `${mobileBase}/chat/${groupId}`,
-        });
-    });
-
-    await Promise.allSettled(promises);
 }
 
 /**

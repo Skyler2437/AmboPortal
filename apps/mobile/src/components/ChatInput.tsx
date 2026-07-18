@@ -1,5 +1,12 @@
 import React, { useState, useRef } from 'react';
-import { View, StyleSheet, TextInput, TextInput as RNTextInput } from 'react-native';
+import {
+  AccessibilityInfo,
+  View,
+  StyleSheet,
+  TextInput,
+  TextInput as RNTextInput,
+  type LayoutChangeEvent,
+} from 'react-native';
 import { IconButton } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { hapticLight } from '@/lib/haptics';
@@ -8,43 +15,50 @@ import { space, radius, fontSize, type SemanticTokens } from '@/lib/theme';
 
 interface ChatInputProps {
   onSend: (text: string) => Promise<void>;
-  onTyping?: () => void;
+  onTypingChange?: (hasText: boolean) => void;
+  /** Reports the full composer height as multiline input grows or shrinks. */
+  onHeightChange?: (height: number) => void;
   disabled?: boolean;
 }
 
-export function ChatInput({ onSend, onTyping, disabled }: ChatInputProps) {
+export function ChatInput({ onSend, onTypingChange, onHeightChange, disabled }: ChatInputProps) {
   const { styles, tokens } = useThemedStyles(makeStyles);
   const [text, setText] = useState('');
-  const [sending, setSending] = useState(false);
   const insets = useSafeAreaInsets();
   const inputRef = useRef<RNTextInput>(null);
+  const lastHeightRef = useRef(0);
 
-  const handleSend = async () => {
-    if (!text.trim() || sending) return;
+  const handleSend = () => {
+    if (!text.trim()) return;
     const message = text.trim();
-    setSending(true);
     setText('');
+    onTypingChange?.(false);
 
     hapticLight();
-
-    try {
-      await onSend(message);
-    } finally {
-      setSending(false);
-      // Keep keyboard open after sending
-      inputRef.current?.focus();
-    }
+    void Promise.resolve()
+      .then(() => onSend(message))
+      .catch(() => AccessibilityInfo.announceForAccessibility('Message failed to send. Tap the failed message to retry.'));
+    // Keep the keyboard available for rapid consecutive messages.
+    inputRef.current?.focus();
   };
 
   const handleChangeText = (value: string) => {
     setText(value);
-    if (value.trim() && onTyping) {
-      onTyping();
-    }
+    onTypingChange?.(Boolean(value.trim()));
+  };
+
+  const handleLayout = (event: LayoutChangeEvent) => {
+    const height = Math.round(event.nativeEvent.layout.height);
+    if (height <= 0 || height === lastHeightRef.current) return;
+    lastHeightRef.current = height;
+    onHeightChange?.(height);
   };
 
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(space.sm, insets.bottom) }]}>
+    <View
+      style={[styles.container, { paddingBottom: Math.max(space.sm, insets.bottom) }]}
+      onLayout={handleLayout}
+    >
       <TextInput
         ref={inputRef}
         placeholder="Type a message..."
@@ -56,13 +70,16 @@ export function ChatInput({ onSend, onTyping, disabled }: ChatInputProps) {
         maxLength={2000}
         blurOnSubmit={false}
         editable={!disabled}
+        accessibilityLabel="Message"
+        onBlur={() => onTypingChange?.(false)}
       />
       <IconButton
         icon="send"
         mode="contained"
         size={20}
         onPress={handleSend}
-        disabled={!text.trim() || sending || disabled}
+        disabled={!text.trim() || disabled}
+        accessibilityLabel="Send message"
       />
     </View>
   );

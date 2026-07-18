@@ -105,6 +105,10 @@ export function ChatLayout({ currentUserId, currentUserFirstName = "", currentUs
                 stored[id] = new Date().toISOString();
                 localStorage.setItem(key, JSON.stringify(stored));
             } catch {}
+            void fetch(`/api/chat/groups/${id}/read`, { method: "POST" }).catch(() => {
+                // The local unread indicator remains optimistic. Selecting the
+                // conversation again retries persistence if this request fails.
+            });
         }
         const params = new URLSearchParams(window.location.search);
         if (id) {

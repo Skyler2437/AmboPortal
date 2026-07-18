@@ -1,6 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { DEMO_MODE, DEMO_USER, demoChatGroups } from '@/lib/demo';
+import { syncUnreadMessageBadge } from '@/lib/app-badge';
+import {
+  createReadAcknowledgementQueue,
+  getMonotonicReadFilter,
+} from '@/lib/chat-read-acknowledgement';
 
 export interface ChatThreadMeta {
   /** Header title: the group name, or derived from participant names. */
@@ -8,7 +13,7 @@ export interface ChatThreadMeta {
   /** Current user's first name (used by the typing indicator). */
   userFirstName: string;
   /** Persist this thread as read (updates chat_participants.last_read_at). */
-  markRead: () => void;
+  markRead: () => Promise<boolean>;
 }
 
 function useChatThreadMetaReal(groupId: string, userId: string): ChatThreadMeta {
@@ -18,6 +23,8 @@ function useChatThreadMetaReal(groupId: string, userId: string): ChatThreadMeta 
   // Group name for the header (fall back to participant names if unnamed).
   useEffect(() => {
     if (!groupId) return;
+    let disposed = false;
+    setGroupName('Messages');
     async function fetchGroupName() {
       const { data: group } = await supabase
         .from('chat_groups')
@@ -25,6 +32,7 @@ function useChatThreadMetaReal(groupId: string, userId: string): ChatThreadMeta 
         .eq('id', groupId)
         .single();
 
+      if (disposed) return;
       if (group?.name) {
         setGroupName(group.name);
         return;
@@ -35,6 +43,7 @@ function useChatThreadMetaReal(groupId: string, userId: string): ChatThreadMeta 
         .select('user_id, users(first_name, last_name)')
         .eq('group_id', groupId);
 
+      if (disposed) return;
       if (participants) {
         const others = participants
           .filter((p: any) => p.user_id !== userId && p.users)
@@ -44,32 +53,49 @@ function useChatThreadMetaReal(groupId: string, userId: string): ChatThreadMeta 
         }
       }
     }
-    fetchGroupName();
+    void fetchGroupName();
+    return () => {
+      disposed = true;
+    };
   }, [groupId, userId]);
 
   // Cache the current user's first name for the typing indicator.
   useEffect(() => {
     if (!userId) return;
-    supabase
+    let disposed = false;
+    setUserFirstName('');
+    void supabase
       .from('users')
       .select('first_name')
       .eq('id', userId)
       .single()
       .then(({ data }) => {
-        if (data) setUserFirstName((data as any).first_name || '');
+        if (!disposed && data) setUserFirstName((data as any).first_name || '');
       });
+    return () => {
+      disposed = true;
+    };
   }, [userId]);
 
+  const readAcknowledgements = useMemo(() => createReadAcknowledgementQueue(async (readAt) => {
+    const { error } = await supabase
+      .from('chat_participants')
+      .update({ last_read_at: readAt })
+      .eq('group_id', groupId)
+      .eq('user_id', userId)
+      .or(getMonotonicReadFilter(readAt));
+    if (error) return false;
+
+    // A zero-row update is also success: another device already persisted an
+    // equal or newer read timestamp, so there is nothing left to acknowledge.
+    await syncUnreadMessageBadge(userId).catch(() => {});
+    return true;
+  }), [groupId, userId]);
+
   const markRead = useCallback(() => {
-    if (!groupId || !userId) return;
-    Promise.resolve(
-      supabase
-        .from('chat_participants')
-        .update({ last_read_at: new Date().toISOString() })
-        .eq('group_id', groupId)
-        .eq('user_id', userId),
-    ).catch(() => {});
-  }, [groupId, userId]);
+    if (!groupId || !userId) return Promise.resolve(false);
+    return readAcknowledgements.acknowledge();
+  }, [groupId, readAcknowledgements, userId]);
 
   return { groupName, userFirstName, markRead };
 }
@@ -79,7 +105,7 @@ function useChatThreadMetaDemo(groupId: string, _userId: string): ChatThreadMeta
   return {
     groupName: group?.name || 'Chat',
     userFirstName: DEMO_USER.first_name,
-    markRead: () => {},
+    markRead: async () => true,
   };
 }
 
