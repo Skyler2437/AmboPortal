@@ -1,8 +1,10 @@
+import 'react-native-gesture-handler';
 import { useEffect, useRef } from 'react';
 import * as Sentry from '@sentry/react-native';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 import { NetworkProvider } from '@/providers/NetworkProvider';
 import { PushNotificationsProvider } from '@/providers/PushNotificationsProvider';
@@ -101,21 +103,23 @@ function BiometricGate({ children }: { children: React.ReactNode }) {
 
 function RootLayout() {
   return (
-    <ErrorBoundary>
-      <AuthProvider>
-        <KeyboardProvider>
-          <AppThemeProvider>
-            <NetworkProvider>
-              <PushNotificationsProvider>
-                <BiometricGate>
-                  <RootNavigator />
-                </BiometricGate>
-              </PushNotificationsProvider>
-            </NetworkProvider>
-          </AppThemeProvider>
-        </KeyboardProvider>
-      </AuthProvider>
-    </ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary>
+        <AuthProvider>
+          <KeyboardProvider>
+            <AppThemeProvider>
+              <NetworkProvider>
+                <PushNotificationsProvider>
+                  <BiometricGate>
+                    <RootNavigator />
+                  </BiometricGate>
+                </PushNotificationsProvider>
+              </NetworkProvider>
+            </AppThemeProvider>
+          </KeyboardProvider>
+        </AuthProvider>
+      </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }
 

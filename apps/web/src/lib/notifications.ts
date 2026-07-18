@@ -19,7 +19,22 @@ export type PushPayload = {
     body: string;
     url?: string;
     mobilePath?: string;
+    badge?: number;
 };
+
+export function buildExpoPushMessage(token: string, payload: PushPayload) {
+    return {
+        to: token,
+        sound: "default" as const,
+        title: payload.title,
+        body: payload.body,
+        data: {
+            url: payload.url,
+            mobilePath: payload.mobilePath,
+        },
+        ...(payload.badge !== undefined ? { badge: payload.badge } : {}),
+    };
+}
 
 /**
  * Send push notifications to Expo mobile devices for a list of user IDs.
@@ -42,16 +57,7 @@ async function sendExpoNotifications(
     const messages = tokens
         .filter((t) => t.user_id !== excludeUserId)
         .filter((t) => t.token.startsWith("ExponentPushToken["))
-        .map((t) => ({
-            to: t.token,
-            sound: "default" as const,
-            title: payload.title,
-            body: payload.body,
-            data: {
-                url: payload.url,
-                mobilePath: payload.mobilePath,
-            },
-        }));
+        .map((t) => buildExpoPushMessage(t.token, payload));
 
     if (messages.length === 0) return;
 

@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useChatReadStore } from '@/stores/chatReadStore';
 import { DEMO_MODE } from '@/lib/demo';
+import { syncUnreadMessageBadge } from '@/lib/app-badge';
 
 function useBadgeCountsReal(userId: string, role: 'admin' | 'student') {
   const [pendingSubmissions, setPendingSubmissions] = useState(0);
@@ -96,7 +97,7 @@ function useBadgeCountsReal(userId: string, role: 'admin' | 'student') {
         .eq('status', 'Pending');
       setPendingSubmissions(count || 0);
     }
-  }, [userId, role]);
+  }, [removeReadGroup, role, userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -121,6 +122,7 @@ function useBadgeCountsReal(userId: string, role: 'admin' | 'student') {
           if (!groupIdsRef.current.includes(newMsg.group_id)) return;
           removeReadGroup(newMsg.group_id);
           fetchCounts();
+          syncUnreadMessageBadge(userId).catch(() => {});
         }
       )
       .on(
@@ -143,7 +145,7 @@ function useBadgeCountsReal(userId: string, role: 'admin' | 'student') {
       appStateListener.remove();
       supabase.removeChannel(channel);
     };
-  }, [fetchCounts, userId]);
+  }, [fetchCounts, removeReadGroup, role, userId]);
 
   // Derive adjusted unread count: server unread minus optimistically-read groups
   // This recomputes instantly when readGroups changes (no server round-trip needed)

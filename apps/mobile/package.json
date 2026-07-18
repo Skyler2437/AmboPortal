@@ -5,6 +5,7 @@
   "main": "expo-router/entry",
   "scripts": {
     "dev": "NODE_OPTIONS='--dns-result-order=ipv4first' expo start --dev-client --localhost",
+    "test": "vitest run",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
@@ -51,6 +52,7 @@
     "react": "19.2.0",
     "react-native": "0.83.2",
     "react-native-keyboard-controller": "1.20.7",
+    "react-native-gesture-handler": "~2.30.0",
     "react-native-paper": "^5.15.0",
     "react-native-reanimated": "4.2.1",
     "react-native-safe-area-context": "~5.6.2",
@@ -66,6 +68,7 @@
     "@types/react": "~19.2.10",
     "babel-plugin-module-resolver": "^5.0.2",
     "sharp": "^0.35.1",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^4.0.18"
   }
 }

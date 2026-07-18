@@ -4,7 +4,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter, useSegments } from 'expo-router';
+import { usePathname, useRouter, useSegments } from 'expo-router';
 import { useAuth } from './AuthProvider';
 import {
   setCurrentPushToken,
@@ -14,6 +14,7 @@ import {
   type TokenPayload,
 } from '@/lib/push-token-manager';
 import type { UserRole } from '@ambo/database/types';
+import { syncUnreadMessageBadge } from '@/lib/app-badge';
 
 const PENDING_TOKEN_KEY = 'ambo_pending_push_token';
 
@@ -45,6 +46,12 @@ function remapMobilePathForRole(mobilePath: string, role: UserRole | null): stri
   return mobilePath.replace(/^\/\((student|admin)\)/, `/${group}`);
 }
 
+function comparableRoutePath(route: string): string {
+  return route
+    .split(/[?#]/, 1)[0]
+    .replace(/^\/\((student|admin)\)/, '') || '/';
+}
+
 function getProjectId(): string | null {
   if (process.env.EXPO_PUBLIC_EAS_PROJECT_ID) {
     return process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
@@ -62,6 +69,7 @@ export function PushNotificationsProvider({ children }: { children: React.ReactN
   const { session, userRole, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+  const pathname = usePathname();
   const registeredRef = useRef(false);
   // Holds a notification target that arrived before navigation settled. We
   // store the raw payload (not a resolved route) because the user's role is
@@ -76,12 +84,14 @@ export function PushNotificationsProvider({ children }: { children: React.ReactN
   const authLoadingRef = useRef(authLoading);
   const userRoleRef = useRef(userRole);
   const segmentsRef = useRef(segments);
+  const pathnameRef = useRef(pathname);
   useEffect(() => {
     sessionRef.current = session;
     authLoadingRef.current = authLoading;
     userRoleRef.current = userRole;
     segmentsRef.current = segments;
-  }, [session, authLoading, userRole, segments]);
+    pathnameRef.current = pathname;
+  }, [session, authLoading, userRole, segments, pathname]);
 
   // Set foreground notification handler
   useEffect(() => {
@@ -96,23 +106,33 @@ export function PushNotificationsProvider({ children }: { children: React.ReactN
       }),
     });
 
-    // Clear badge count when app comes to foreground
+    // Reconcile the authoritative unread total when returning to the app.
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        Notifications.setBadgeCountAsync(0).catch(() => {});
+        const userId = sessionRef.current?.user?.id;
+        if (userId) syncUnreadMessageBadge(userId).catch(() => {});
       }
     });
-
-    // Clear badge on initial mount (app open)
-    Notifications.setBadgeCountAsync(0).catch(() => {});
 
     return () => subscription.remove();
   }, []);
 
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (userId) syncUnreadMessageBadge(userId).catch(() => {});
+  }, [session?.user?.id]);
+
   const applyRoute = useCallback(
     (route: string) => {
       try {
-        router.push(route as Parameters<typeof router.push>[0]);
+        // A warm notification can target the thread already on screen. A
+        // duplicate push would mount a second hook on the same Presence topic;
+        // its later cleanup could disconnect the still-visible thread.
+        if (comparableRoutePath(pathnameRef.current) === comparableRoutePath(route)) return;
+        router.navigate(
+          route as Parameters<typeof router.navigate>[0],
+          { dangerouslySingular: true },
+        );
       } catch {
         // Navigator not mounted yet — re-stage so the settle effect retries.
         pendingTargetRef.current = { mobilePath: route };
@@ -232,7 +252,11 @@ export function PushNotificationsProvider({ children }: { children: React.ReactN
       let finalStatus = existingStatus;
 
       if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
+        const { status } = await Notifications.requestPermissionsAsync(
+          Platform.OS === 'ios'
+            ? { ios: { allowAlert: true, allowBadge: true, allowSound: true } }
+            : undefined,
+        );
         finalStatus = status;
       }
 
@@ -281,6 +305,16 @@ export function PushNotificationsProvider({ children }: { children: React.ReactN
 
     try {
       const payload: TokenPayload = JSON.parse(pendingRaw);
+      // Older builds persisted native APNs tokens here (rotation listener
+      // bug); the server rejects those with 400 forever, so drop them
+      // instead of retrying on every session event.
+      if (
+        typeof payload.token !== 'string' ||
+        !payload.token.startsWith('ExponentPushToken[')
+      ) {
+        await AsyncStorage.removeItem(PENDING_TOKEN_KEY);
+        return;
+      }
       const synced = await syncTokenToServer(payload);
       if (synced) {
         await AsyncStorage.removeItem(PENDING_TOKEN_KEY);
@@ -322,20 +356,38 @@ export function PushNotificationsProvider({ children }: { children: React.ReactN
     if (Platform.OS === 'web') return;
 
     const subscription = Notifications.addPushTokenListener(async (newToken) => {
-      const token = newToken.data as string;
-      setCurrentPushToken(token);
+      // newToken is the NATIVE device token (APNs/FCM), not an Expo token —
+      // the server only accepts ExponentPushToken[...] and 400s anything
+      // else. Exchange it for the rotated Expo token. Passing the received
+      // token as devicePushToken skips getExpoPushTokenAsync's internal
+      // getDevicePushTokenAsync call, which would re-fire this listener.
+      const projectId = getProjectId();
+      if (!projectId) return;
 
-      const payload: TokenPayload = {
-        token,
-        platform: Platform.OS,
-        device_name: Device.deviceName || `${Platform.OS} device`,
-      };
+      try {
+        const tokenData = await Notifications.getExpoPushTokenAsync({
+          projectId,
+          devicePushToken: newToken,
+        });
+        const token = tokenData.data;
+        setCurrentPushToken(token);
 
-      const synced = await syncTokenToServer(payload);
-      if (!synced) {
-        await AsyncStorage.setItem(PENDING_TOKEN_KEY, JSON.stringify(payload));
-      } else {
-        await AsyncStorage.removeItem(PENDING_TOKEN_KEY);
+        const payload: TokenPayload = {
+          token,
+          platform: Platform.OS,
+          device_name: Device.deviceName || `${Platform.OS} device`,
+        };
+
+        const synced = await syncTokenToServer(payload);
+        if (!synced) {
+          await AsyncStorage.setItem(PENDING_TOKEN_KEY, JSON.stringify(payload));
+        } else {
+          await AsyncStorage.removeItem(PENDING_TOKEN_KEY);
+        }
+      } catch {
+        // The exchange hits Expo's servers and can fail transiently; swallow
+        // so it doesn't surface as an unhandled rejection. The next session
+        // event or relaunch re-registers via registerPushToken.
       }
     });
 
