@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { createAdminClient } from "@ambo/database/admin-client";
 import bcrypt from "bcryptjs";
 import { getClient, createAuthorizationCode } from "@/lib/mcp/oauth-store";
-import { getBaseUrl } from "@/lib/mcp/oauth-utils";
+import { getBaseUrl, getMcpResourceUrl } from "@/lib/mcp/oauth-utils";
 
 /**
  * GET /oauth/authorize — Renders a standalone HTML login form for the OAuth flow.
@@ -16,12 +16,14 @@ export async function GET(req: NextRequest) {
   const codeChallenge = params.get("code_challenge") || "";
   const codeChallengeMethod = params.get("code_challenge_method") || "";
   const scope = params.get("scope") || "read write";
+  const resource = params.get("resource") || "";
 
   // Validate required params
   const errors: string[] = [];
   if (!clientId) errors.push("client_id is required");
   if (!redirectUri) errors.push("redirect_uri is required");
   if (!codeChallenge) errors.push("code_challenge is required");
+  if (resource !== getMcpResourceUrl()) errors.push("Invalid protected resource");
   if (codeChallengeMethod && codeChallengeMethod !== "S256") {
     errors.push("Only S256 code_challenge_method is supported");
   }
@@ -70,7 +72,7 @@ export async function GET(req: NextRequest) {
   <div class="card">
     <div class="logo"><img src="${baseUrl}/logo.png" alt="Ambassador Portal" onerror="this.style.display='none'"></div>
     <h1>Sign in to Ambassador Portal</h1>
-    <p class="subtitle">Connect your account to use with Claude AI</p>
+    <p class="subtitle">Connect your account to use with ChatGPT</p>
     ${errorHtml}
     ${errors.length === 0 ? `
     <form method="POST" action="/oauth/authorize" id="loginForm">
@@ -79,6 +81,7 @@ export async function GET(req: NextRequest) {
       <input type="hidden" name="state" value="${escapeHtml(state)}">
       <input type="hidden" name="code_challenge" value="${escapeHtml(codeChallenge)}">
       <input type="hidden" name="scope" value="${escapeHtml(scope)}">
+      <input type="hidden" name="resource" value="${escapeHtml(resource)}">
       <div class="field">
         <label for="email">Email or Phone</label>
         <input type="text" id="email" name="email" required autocomplete="username" placeholder="you@example.com">
@@ -113,8 +116,9 @@ export async function POST(req: NextRequest) {
     const state = formData.get("state") as string;
     const codeChallenge = formData.get("code_challenge") as string;
     const scope = (formData.get("scope") as string) || "read write";
+    const resource = formData.get("resource") as string;
 
-    if (!email || !password || !clientId || !redirectUri || !codeChallenge) {
+    if (!email || !password || !clientId || !redirectUri || !codeChallenge || resource !== getMcpResourceUrl()) {
       return redirectWithError(redirectUri, state, "invalid_request", "Missing required parameters");
     }
 
@@ -136,13 +140,13 @@ export async function POST(req: NextRequest) {
     const { data: user, error: lookupError } = await query.single();
 
     if (lookupError || !user || !user.password_hash) {
-      return renderError(req, "Invalid email or password.", { clientId, redirectUri, state, codeChallenge, scope });
+      return renderError(req, "Invalid email or password.", { clientId, redirectUri, state, codeChallenge, scope, resource });
     }
 
     // Verify password
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
-      return renderError(req, "Invalid email or password.", { clientId, redirectUri, state, codeChallenge, scope });
+      return renderError(req, "Invalid email or password.", { clientId, redirectUri, state, codeChallenge, scope, resource });
     }
 
     try {
@@ -161,6 +165,7 @@ export async function POST(req: NextRequest) {
       redirectUri,
       codeChallenge,
       scope,
+      resource,
     });
 
     // Redirect back to client with code.
@@ -204,7 +209,7 @@ function redirectWithError(
 function renderError(
   _req: NextRequest,
   message: string,
-  params: { clientId: string; redirectUri: string; state: string; codeChallenge: string; scope: string }
+  params: { clientId: string; redirectUri: string; state: string; codeChallenge: string; scope: string; resource: string }
 ) {
   const baseUrl = getBaseUrl();
   const html = `<!DOCTYPE html>
@@ -242,6 +247,7 @@ function renderError(
       <input type="hidden" name="state" value="${escapeHtml(params.state)}">
       <input type="hidden" name="code_challenge" value="${escapeHtml(params.codeChallenge)}">
       <input type="hidden" name="scope" value="${escapeHtml(params.scope)}">
+      <input type="hidden" name="resource" value="${escapeHtml(params.resource)}">
       <div class="field">
         <label for="email">Email or Phone</label>
         <input type="text" id="email" name="email" required autocomplete="username" placeholder="you@example.com">

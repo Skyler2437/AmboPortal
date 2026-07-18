@@ -32,6 +32,10 @@ export function getBaseUrl(): string {
   return `http://localhost:${port}`;
 }
 
+export function getMcpResourceUrl(): string {
+  return `${getBaseUrl()}/api/mcp/mcp`;
+}
+
 /**
  * Build OAuth 2.0 Authorization Server Metadata (RFC 8414).
  */
