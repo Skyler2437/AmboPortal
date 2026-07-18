@@ -44,7 +44,9 @@ const nextConfig = {
               "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://fonts.googleapis.com https://*.sentry.io https://*.google.com https://*.googleapis.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
-              "form-action 'self'",
+              // OAuth authorization is submitted to this app, then redirects
+              // the form navigation to ChatGPT's registered callback.
+              "form-action 'self' https://chatgpt.com",
             ].join("; "),
           },
         ],
