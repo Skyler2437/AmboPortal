@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@ambo/database/admin-client";
 import { NextRequest, NextResponse } from "next/server";
 import { createCalendarEvent } from "@/lib/googleCalendar";
+import { authorizeEvent } from "@/lib/eventPermissions";
 
 async function getAuthenticatedUserId(
     req: NextRequest
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Verify the user is admin/superadmin
+    // Load the role used by creator-aware event authorization.
     const supabase = createAdminClient();
     const { data: user } = await supabase
         .from("users")
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
         .eq("id", userId)
         .single();
 
-    if (!user || (user.role !== "admin" && user.role !== "superadmin")) {
+    if (!user) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -63,7 +64,29 @@ export async function POST(req: NextRequest) {
         );
     }
 
-    // Fetch the event
+    const authorization = await authorizeEvent(
+        { userId, role: user.role },
+        eventId,
+        async (id) => {
+            const { data } = await supabase
+                .from("events")
+                .select("id, created_by")
+                .eq("id", id)
+                .maybeSingle();
+            return data ? data.created_by : undefined;
+        }
+    );
+    if (authorization.status === "not_found") {
+        return NextResponse.json(
+            { error: "Event not found" },
+            { status: 404 }
+        );
+    }
+    if (authorization.status === "forbidden") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // Fetch the complete event after authorization
     const { data: event, error } = await supabase
         .from("events")
         .select("*")

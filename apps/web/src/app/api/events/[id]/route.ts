@@ -3,6 +3,7 @@ import { getSession } from "@/lib/session";
 import { createAdminClient } from "@ambo/database/admin-client";
 import { createClient } from "@supabase/supabase-js";
 import { deleteCalendarEvent } from "@/lib/googleCalendar";
+import { authorizeEvent } from "@/lib/eventPermissions";
 
 /**
  * Authenticate via cookie session (web) or Bearer token (mobile).
@@ -52,15 +53,29 @@ export async function PUT(
     { params }: { params: { id: string } }
 ) {
     const authUser = await getAuthUser(req);
-    if (!authUser || (authUser.role !== "admin" && authUser.role !== "superadmin")) {
+    if (!authUser) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const supabase = createAdminClient();
+    const authorization = await authorizeEvent(authUser, params.id, async (eventId) => {
+        const { data } = await supabase
+            .from("events")
+            .select("created_by")
+            .eq("id", eventId)
+            .maybeSingle();
+        return data ? data.created_by : undefined;
+    });
+    if (authorization.status === "not_found") {
+        return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    }
+    if (authorization.status === "forbidden") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const body = await req.json();
     const { title, description, start_time, end_time, type, uniform } =
         body;
-
-    const supabase = createAdminClient();
 
     // Update the database
     const { data: updated, error } = await supabase
@@ -162,11 +177,25 @@ export async function DELETE(
     { params }: { params: { id: string } }
 ) {
     const authUser = await getAuthUser(req);
-    if (!authUser || (authUser.role !== "admin" && authUser.role !== "superadmin")) {
+    if (!authUser) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const supabase = createAdminClient();
+    const authorization = await authorizeEvent(authUser, params.id, async (eventId) => {
+        const { data } = await supabase
+            .from("events")
+            .select("created_by")
+            .eq("id", eventId)
+            .maybeSingle();
+        return data ? data.created_by : undefined;
+    });
+    if (authorization.status === "not_found") {
+        return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    }
+    if (authorization.status === "forbidden") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     // Fetch event first to get gcal ID
     const { data: event } = await supabase
