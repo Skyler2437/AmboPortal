@@ -120,6 +120,7 @@ beforeEach(() => {
   });
   alertSpy = vi.spyOn(Alert, 'alert').mockImplementation(() => undefined);
   mocks.eventRequests.clear();
+  mocks.detailSuspensions.clear();
   mocks.presentRequests.clear();
   mocks.viewStates.clear();
   mocks.eventRequests.set('event-1', Promise.resolve({ data: testEvent('event-1'), error: null }));
@@ -238,6 +239,62 @@ describe('EventDetailScreen engagement behavior', () => {
 
     expect(hasText(renderer, 'Jordan Lee')).toBe(true);
     expect(hasText(renderer, 'Taylor Kim')).toBe(false);
+  });
+
+  it('keeps a committed viewer request valid when a route transition render is abandoned', async () => {
+    const viewerRequest = deferred<unknown[]>();
+    const abandonedRender = deferred<void>();
+    mocks.viewStates.set('event-1', {
+      viewCount: 6,
+      recordView: vi.fn().mockResolvedValue(undefined),
+      loadViewers: vi.fn(() => viewerRequest.promise),
+    });
+    mocks.eventRequests.set('event-2', Promise.resolve({ data: testEvent('event-2'), error: null }));
+    mocks.presentRequests.set('event-2', Promise.resolve([]));
+    mocks.viewStates.set('event-2', {
+      viewCount: 2,
+      recordView: vi.fn().mockResolvedValue(undefined),
+      loadViewers: vi.fn().mockResolvedValue([]),
+    });
+    mocks.detailSuspensions.set('event-2', abandonedRender.promise);
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(
+        React.createElement(EventDetailScreen, { role: 'student' }),
+        { unstable_isConcurrent: true },
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    mountedRenderers.push(renderer);
+
+    act(() => {
+      findByLabel(renderer, 'Seen by 6 people').props.onPress();
+    });
+
+    mocks.routeId = 'event-2';
+    await act(async () => {
+      React.startTransition(() => {
+        renderer.update(React.createElement(EventDetailScreen, { role: 'student' }));
+      });
+      await Promise.resolve();
+    });
+
+    mocks.routeId = 'event-1';
+    await act(async () => {
+      renderer.update(React.createElement(EventDetailScreen, { role: 'student' }));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      viewerRequest.resolve([
+        { id: 'viewer-1', first_name: 'Maya', last_name: 'Chen' },
+      ]);
+      await viewerRequest.promise;
+    });
+
+    expect(hasText(renderer, 'Maya Chen')).toBe(true);
   });
 
   it('ignores an out-of-order Present response owned by the previous event', async () => {

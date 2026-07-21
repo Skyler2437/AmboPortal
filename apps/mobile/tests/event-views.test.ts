@@ -143,6 +143,71 @@ describe('useEventViews', () => {
     expect(result.current.viewCount).toBe(3);
   });
 
+  it('keeps the committed event request valid when a suspended transition is abandoned', async () => {
+    const committedCount = deferred<{ data: null; count: number; error: null }>();
+    const abandonedRender = deferred<void>();
+    const neverCompletes = new Promise<never>(() => undefined);
+    let eventOneCalls = 0;
+    mocks.from.mockImplementation(() => ({
+      select: () => ({
+        eq: (_column: string, eventId: string) => {
+          if (eventId === 'event-1') {
+            eventOneCalls += 1;
+            return eventOneCalls === 1 ? committedCount.promise : neverCompletes;
+          }
+          return Promise.resolve({ data: null, count: 2, error: null });
+        },
+      }),
+    }));
+
+    function Harness({ eventId, suspend }: { eventId: string; suspend: boolean }) {
+      const { viewCount } = useEventViews(eventId, 'user-1');
+      if (suspend) throw abandonedRender.promise;
+      return React.createElement('ViewCount', { value: viewCount });
+    }
+
+    let renderer!: ReactTestRenderer;
+    await act(async () => {
+      renderer = create(
+        React.createElement(
+          React.Suspense,
+          { fallback: null },
+          React.createElement(Harness, { eventId: 'event-1', suspend: false }),
+        ),
+        { unstable_isConcurrent: true },
+      );
+      await Promise.resolve();
+    });
+    mountedRenderers.push(renderer);
+
+    await act(async () => {
+      React.startTransition(() => {
+        renderer.update(React.createElement(
+          React.Suspense,
+          { fallback: null },
+          React.createElement(Harness, { eventId: 'event-2', suspend: true }),
+        ));
+      });
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      renderer.update(React.createElement(
+        React.Suspense,
+        { fallback: null },
+        React.createElement(Harness, { eventId: 'event-1', suspend: false }),
+      ));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      committedCount.resolve({ data: null, count: 8, error: null });
+      await committedCount.promise;
+    });
+
+    expect(renderer.root.find((node) => node.type === 'ViewCount').props.value).toBe(8);
+  });
+
   it('does not let a delayed view recording refresh overwrite the next event count', async () => {
     const recordEventOne = deferred<{ data: null; error: null }>();
     const eventOneRefresh = deferred<{ data: null; count: number; error: null }>();
@@ -242,6 +307,7 @@ describe('useEventViews', () => {
     }));
 
     const { result } = renderRealHook(() => useEventViews('event-1', 'user-1'), {});
+    await flushEffects();
 
     await expect(result.current.loadViewers()).resolves.toEqual([
       { id: 'user-2', first_name: 'Maya', last_name: 'Chen', avatar_url: undefined },

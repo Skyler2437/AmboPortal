@@ -6,6 +6,10 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    setupFiles: ['./tests/setup-mobile-react.cjs'],
+    onConsoleLog(log, type) {
+      if (type === 'stderr' && log.includes('react-test-renderer is deprecated')) return false;
+    },
     server: {
       deps: {
         inline: ['react-test-renderer'],
@@ -29,7 +33,6 @@ export default defineConfig({
       '@/components/UserListDialog': path.resolve(__dirname, './tests/event-detail-dependencies.mock.ts'),
       '@/hooks/useThemedStyles': path.resolve(__dirname, './tests/event-detail-dependencies.mock.ts'),
       'react-native': path.resolve(__dirname, './tests/event-detail-dependencies.mock.ts'),
-      'react': path.resolve(__dirname, '../../node_modules/react'),
       '@': path.resolve(__dirname, './src'),
     },
   },

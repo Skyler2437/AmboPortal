@@ -24,40 +24,57 @@ export async function loadPresentUsers(eventId: string): Promise<DialogUser[]> {
   return normalizeRelatedUsers(data);
 }
 
-export function useEventViews(eventId: string, userId: string) {
-  const ownerRef = useRef({ eventId, generation: 0 });
-  if (ownerRef.current.eventId !== eventId) {
-    ownerRef.current = {
-      eventId,
-      generation: ownerRef.current.generation + 1,
-    };
-  }
-  const owner = ownerRef.current;
-  const [viewCountState, setViewCountState] = useState({ owner, count: 0 });
-  const recordedViewKeys = useRef(new Set<string>());
-  const viewCount = viewCountState.owner === owner ? viewCountState.count : 0;
+type ViewRequestOwner = {
+  eventId: string;
+  generation: number;
+};
 
-  const loadViewCount = useCallback(async () => {
+export function useEventViews(eventId: string, userId: string) {
+  const generationRef = useRef(0);
+  const committedOwnerRef = useRef<ViewRequestOwner | null>(null);
+  const [viewCountState, setViewCountState] = useState({ eventId, count: 0 });
+  const recordedViewKeys = useRef(new Set<string>());
+  const viewCount = viewCountState.eventId === eventId ? viewCountState.count : 0;
+
+  const loadViewCount = useCallback(async (owner: ViewRequestOwner) => {
     const { count, error } = await supabase
       .from('event_views')
       .select('*', { count: 'exact', head: true })
-      .eq('event_id', eventId);
+      .eq('event_id', owner.eventId);
 
     if (error) throw error;
-    if (ownerRef.current !== owner) return;
-    setViewCountState({ owner, count: count ?? 0 });
-  }, [eventId, owner]);
+    if (committedOwnerRef.current !== owner) return;
+    setViewCountState({ eventId: owner.eventId, count: count ?? 0 });
+  }, []);
 
   useEffect(() => {
-    if (!eventId) return;
-    setViewCountState({ owner, count: 0 });
-    loadViewCount().catch((error) => {
+    if (!eventId) {
+      committedOwnerRef.current = null;
+      return;
+    }
+
+    const owner = {
+      eventId,
+      generation: generationRef.current + 1,
+    };
+    generationRef.current = owner.generation;
+    committedOwnerRef.current = owner;
+    setViewCountState({ eventId, count: 0 });
+    loadViewCount(owner).catch((error) => {
       if (__DEV__) console.warn('[Event Views] Unable to load count:', error);
     });
-  }, [eventId, loadViewCount, owner]);
+
+    return () => {
+      if (committedOwnerRef.current === owner) {
+        committedOwnerRef.current = null;
+      }
+    };
+  }, [eventId, loadViewCount]);
 
   const recordView = useCallback(async () => {
     if (!eventId || !userId) return;
+    const owner = committedOwnerRef.current;
+    if (!owner || owner.eventId !== eventId) return;
     const viewKey = `${eventId}:${userId}`;
     if (recordedViewKeys.current.has(viewKey)) return;
     recordedViewKeys.current.add(viewKey);
@@ -68,12 +85,12 @@ export function useEventViews(eventId: string, userId: string) {
         { onConflict: 'event_id,user_id', ignoreDuplicates: true },
       );
       if (error) throw error;
-      if (ownerRef.current !== owner) return;
-      await loadViewCount();
+      if (committedOwnerRef.current !== owner) return;
+      await loadViewCount(owner);
     } catch (error) {
       if (__DEV__) console.warn('[Event Views] Unable to record view:', error);
     }
-  }, [eventId, loadViewCount, owner, userId]);
+  }, [eventId, loadViewCount, userId]);
 
   const loadViewers = useCallback(async (): Promise<DialogUser[]> => {
     const { data, error } = await supabase

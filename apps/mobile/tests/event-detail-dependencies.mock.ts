@@ -23,6 +23,7 @@ export const mockState = {
     userRole: 'student' as 'student' | 'admin' | 'superadmin',
   },
   eventRequests: new Map<string, Promise<{ data: unknown; error: null }>>(),
+  detailSuspensions: new Map<string, Promise<unknown>>(),
   presentRequests: new Map<string, Promise<unknown[]>>(),
   viewStates: new Map<string, {
     viewCount: number;
@@ -51,7 +52,11 @@ export const Stack = { Screen: 'StackScreen' };
 export const useSafeAreaInsets = () => ({ top: 0, right: 0, bottom: 0, left: 0 });
 
 export const useAuth = () => mockState.auth;
-export const useEventDetail = () => mockState.detail;
+export const useEventDetail = (eventId: string) => {
+  const suspension = mockState.detailSuspensions.get(eventId);
+  if (suspension) throw suspension;
+  return mockState.detail;
+};
 export const useEventViews = (eventId: string) => {
   const state = mockState.viewStates.get(eventId);
   if (!state) throw new Error(`Missing view state for ${eventId}`);

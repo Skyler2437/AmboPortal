@@ -50,26 +50,20 @@ type EngagementOwner = {
 };
 
 type EventEngagementState = {
-  owner: EngagementOwner;
+  eventId: string;
   viewersOpen: boolean;
   viewers: DialogUser[] | null;
-  viewerError: string | null;
   presentOpen: boolean;
   presentUsers: DialogUser[];
-  presentLoading: boolean;
-  presentError: string | null;
 };
 
-function createEventEngagementState(owner: EngagementOwner): EventEngagementState {
+function createEventEngagementState(eventId: string): EventEngagementState {
   return {
-    owner,
+    eventId,
     viewersOpen: false,
     viewers: [],
-    viewerError: null,
     presentOpen: false,
     presentUsers: [],
-    presentLoading: false,
-    presentError: null,
   };
 }
 
@@ -147,14 +141,8 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const isAdmin = role === 'admin';
   const { styles, tokens } = useThemedStyles(makeStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
-  const engagementOwnerRef = useRef<EngagementOwner>({ eventId: id, generation: 0 });
-  if (engagementOwnerRef.current.eventId !== id) {
-    engagementOwnerRef.current = {
-      eventId: id,
-      generation: engagementOwnerRef.current.generation + 1,
-    };
-  }
-  const engagementOwner = engagementOwnerRef.current;
+  const engagementGenerationRef = useRef(0);
+  const committedEngagementOwnerRef = useRef<EngagementOwner | null>(null);
   const { session, userRole } = useAuth();
   const userId = session?.user?.id || '';
   const router = useRouter();
@@ -168,11 +156,11 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const [sendingReminder, setSendingReminder] = useState(false);
   const [creatingChat, setCreatingChat] = useState(false);
   const [engagementState, setEngagementState] = useState(() => (
-    createEventEngagementState(engagementOwner)
+    createEventEngagementState(id)
   ));
-  const currentEngagement = engagementState.owner === engagementOwner
+  const currentEngagement = engagementState.eventId === id
     ? engagementState
-    : createEventEngagementState(engagementOwner);
+    : createEventEngagementState(id);
   const { viewersOpen, viewers, presentOpen, presentUsers } = currentEngagement;
 
   // Edit form state (admin only)
@@ -188,12 +176,24 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const { viewCount, recordView, loadViewers } = useEventViews(id, userId);
 
   useEffect(() => {
+    const owner = {
+      eventId: id,
+      generation: engagementGenerationRef.current + 1,
+    };
+    engagementGenerationRef.current = owner.generation;
+    committedEngagementOwnerRef.current = owner;
     setEngagementState((current) => (
-      current.owner === engagementOwner
+      current.eventId === id
         ? current
-        : createEventEngagementState(engagementOwner)
+        : createEventEngagementState(id)
     ));
-  }, [engagementOwner]);
+
+    return () => {
+      if (committedEngagementOwnerRef.current === owner) {
+        committedEngagementOwnerRef.current = null;
+      }
+    };
+  }, [id]);
 
   useEffect(() => {
     let active = true;
@@ -229,36 +229,33 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
 
   useEffect(() => {
     if (!event || event.id !== id) return;
-    const requestOwner = engagementOwner;
+    const requestOwner = committedEngagementOwnerRef.current;
+    if (!requestOwner || requestOwner.eventId !== id) return;
     let active = true;
     setEngagementState((current) => ({
-      ...(current.owner === requestOwner
+      ...(current.eventId === id
         ? current
-        : createEventEngagementState(requestOwner)),
+        : createEventEngagementState(id)),
       presentOpen: false,
       presentUsers: [],
-      presentLoading: true,
-      presentError: null,
     }));
     loadPresentUsers(id)
       .then((users) => {
-        if (!active || engagementOwnerRef.current !== requestOwner) return;
+        if (!active || committedEngagementOwnerRef.current !== requestOwner) return;
         setEngagementState((current) => (
-          current.owner === requestOwner
-            ? { ...current, presentUsers: users, presentLoading: false }
+          current.eventId === id
+            ? { ...current, presentUsers: users }
             : current
         ));
       })
       .catch((error) => {
         if (__DEV__) console.warn('[Event Attendance] Unable to load Present list:', error);
-        if (!active || engagementOwnerRef.current !== requestOwner) return;
+        if (!active || committedEngagementOwnerRef.current !== requestOwner) return;
         setEngagementState((current) => (
-          current.owner === requestOwner
+          current.eventId === id
             ? {
                 ...current,
                 presentUsers: [],
-                presentLoading: false,
-                presentError: error instanceof Error ? error.message : 'Unable to load Present list.',
               }
             : current
         ));
@@ -266,7 +263,7 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
     return () => {
       active = false;
     };
-  }, [engagementOwner, event, id]);
+  }, [event, id]);
 
   if (eventLoading || !event || event.id !== id) return <LoadingScreen />;
 
@@ -278,34 +275,32 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const maybeCount = rsvps.filter((r) => r.status === 'maybe').length;
 
   const handleOpenViewers = async () => {
-    const requestOwner = engagementOwner;
-    if (engagementOwnerRef.current !== requestOwner) return;
+    const requestOwner = committedEngagementOwnerRef.current;
+    if (!requestOwner || requestOwner.eventId !== id) return;
     setEngagementState((current) => ({
-      ...(current.owner === requestOwner
+      ...(current.eventId === id
         ? current
-        : createEventEngagementState(requestOwner)),
+        : createEventEngagementState(id)),
       viewers: null,
       viewersOpen: true,
-      viewerError: null,
     }));
     try {
       const users = await loadViewers();
-      if (engagementOwnerRef.current !== requestOwner) return;
+      if (committedEngagementOwnerRef.current !== requestOwner) return;
       setEngagementState((current) => (
-        current.owner === requestOwner ? { ...current, viewers: users } : current
+        current.eventId === id ? { ...current, viewers: users } : current
       ));
     } catch (error) {
-      if (engagementOwnerRef.current !== requestOwner) return;
+      if (committedEngagementOwnerRef.current !== requestOwner) return;
       const message = error instanceof Error
         ? error.message
         : 'Please check your connection and try again.';
       setEngagementState((current) => (
-        current.owner === requestOwner
+        current.eventId === id
           ? {
               ...current,
               viewers: [],
               viewersOpen: false,
-              viewerError: message,
             }
           : current
       ));
@@ -317,7 +312,7 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
           {
             text: 'Try Again',
             onPress: () => {
-              if (engagementOwnerRef.current === requestOwner) void handleOpenViewers();
+              if (committedEngagementOwnerRef.current === requestOwner) void handleOpenViewers();
             },
           },
         ],
@@ -748,7 +743,7 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 accessibilityRole="button"
                 accessibilityLabel={`Show ${presentUsers.length} present ${presentUsers.length === 1 ? 'person' : 'people'}`}
                 onPress={() => setEngagementState((current) => (
-                  current.owner === engagementOwner
+                  current.eventId === id
                     ? { ...current, presentOpen: true }
                     : current
                 ))}
@@ -842,7 +837,7 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
         title={`Seen by ${viewCount}`}
         users={viewers}
         onDismiss={() => setEngagementState((current) => (
-          current.owner === engagementOwner
+          current.eventId === id
             ? { ...current, viewersOpen: false }
             : current
         ))}
@@ -852,7 +847,7 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
         title={`Present (${presentUsers.length})`}
         users={presentUsers}
         onDismiss={() => setEngagementState((current) => (
-          current.owner === engagementOwner
+          current.eventId === id
             ? { ...current, presentOpen: false }
             : current
         ))}

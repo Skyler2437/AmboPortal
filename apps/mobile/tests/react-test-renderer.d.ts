@@ -15,7 +15,10 @@ declare module 'react-test-renderer' {
     unmount(): void;
   }
 
-  export function create(element: ReactElement): ReactTestRenderer;
+  export function create(
+    element: ReactElement,
+    options?: { unstable_isConcurrent?: boolean },
+  ): ReactTestRenderer;
   export function act(callback: () => void): void;
   export function act<T>(callback: () => Promise<T>): Promise<T>;
 }
