@@ -153,7 +153,7 @@ describe('ComposerInput mounted behavior', () => {
 });
 
 describe('ChatInput mounted behavior', () => {
-  it('preserves typing, height, optimistic clear, refocus, and failure announcement behavior', async () => {
+  it('blocks an unchanged same-tick duplicate but sends a distinct draft before the first request resolves', async () => {
     const firstSend = deferred<void>();
     const secondSend = deferred<void>();
     const onSend = vi.fn()
@@ -194,22 +194,21 @@ describe('ChatInput mounted behavior', () => {
     expect(onSend).toHaveBeenCalledWith('hello');
     expect(mocks.hapticLight).toHaveBeenCalledTimes(1);
     expect(findByLabel(renderer, 'Message').props.value).toBe('');
-    expect(findByLabel(renderer, 'Send message').props.loading).toBe(true);
     expect(inputNode.focus).toHaveBeenCalledTimes(1);
 
     act(() => findByLabel(renderer, 'Message').props.onChangeText('next message'));
     expect(findByLabel(renderer, 'Message').props.value).toBe('next message');
-
-    await act(async () => {
-      firstSend.resolve(undefined);
-      await firstSend.promise;
-      await Promise.resolve();
-    });
-    expect(findByLabel(renderer, 'Message').props.value).toBe('next message');
-    expect(findByLabel(renderer, 'Send message').props.loading).toBe(false);
+    expect(findByLabel(renderer, 'Send message').props.disabled).toBe(false);
 
     act(() => findByLabel(renderer, 'Send message').props.onPress());
     await act(async () => { await Promise.resolve(); });
+
+    expect(onSend).toHaveBeenCalledTimes(2);
+    expect(onSend).toHaveBeenNthCalledWith(2, 'next message');
+    expect(mocks.hapticLight).toHaveBeenCalledTimes(2);
+    expect(findByLabel(renderer, 'Message').props.value).toBe('');
+    expect(inputNode.focus).toHaveBeenCalledTimes(2);
+
     await act(async () => {
       secondSend.reject(new Error('offline'));
       await secondSend.promise.catch(() => undefined);
@@ -218,5 +217,12 @@ describe('ChatInput mounted behavior', () => {
     expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith(
       'Message failed to send. Tap the failed message to retry.',
     );
+
+    await act(async () => {
+      firstSend.resolve(undefined);
+      await firstSend.promise;
+      await Promise.resolve();
+    });
+    expect(findByLabel(renderer, 'Message').props.value).toBe('');
   });
 });

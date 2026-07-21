@@ -195,6 +195,27 @@ describe('EventDetailScreen engagement behavior', () => {
     expect(mocks.inputFocus).not.toHaveBeenCalled();
   });
 
+  it('preserves a newer in-flight draft when an older comment fails', async () => {
+    const request = deferred<Error | null>();
+    mocks.detail.postComment.mockImplementation(() => request.promise);
+    const renderer = await renderScreen('student');
+
+    act(() => findByLabel(renderer, 'Comment').props.onChangeText('Older draft'));
+    let pending!: Promise<void>;
+    act(() => { pending = findByLabel(renderer, 'Post comment').props.onPress(); });
+    act(() => findByLabel(renderer, 'Comment').props.onChangeText('Newer draft'));
+
+    await act(async () => {
+      request.resolve(new Error('offline'));
+      await pending;
+    });
+
+    expect(findByLabel(renderer, 'Comment').props.value).toBe('Newer draft');
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith(
+      'Failed to post comment.',
+    );
+  });
+
   it('records a view only after the current detail request resolves', async () => {
     const eventRequest = deferred<{ data: unknown; error: null }>();
     mocks.eventRequests.set('event-1', eventRequest.promise);

@@ -166,4 +166,25 @@ describe('PostDetailScreen comment composer', () => {
     );
     expect(mocks.inputFocus).not.toHaveBeenCalled();
   });
+
+  it('preserves a newer in-flight draft when an older comment fails', async () => {
+    const request = deferred<void>();
+    postMocks.createComment.mockImplementation(() => request.promise);
+    const renderer = await renderScreen();
+
+    act(() => findByLabel(renderer, 'Comment').props.onChangeText('Older draft'));
+    let pending!: Promise<void>;
+    act(() => { pending = findByLabel(renderer, 'Post comment').props.onPress(); });
+    act(() => findByLabel(renderer, 'Comment').props.onChangeText('Newer draft'));
+
+    await act(async () => {
+      request.reject(new Error('offline'));
+      await pending;
+    });
+
+    expect(findByLabel(renderer, 'Comment').props.value).toBe('Newer draft');
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith(
+      'Failed to post comment.',
+    );
+  });
 });
