@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
+  AccessibilityInfo,
   View,
   ScrollView,
   StyleSheet,
@@ -29,9 +30,11 @@ import { createChatGroup } from '@/lib/chat';
 import { LoadingScreen } from '@/components/LoadingScreen';
 import { EventDateTimePicker } from '@/components/EventDateTimePicker';
 import { UserListDialog, type DialogUser } from '@/components/UserListDialog';
+import { ComposerInput } from '@/components/ComposerInput';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { getInitials } from '@/lib/format';
 import { canManageEvent } from '@/lib/event-attendance';
+import { sendDraft } from '@/lib/composer-state';
 import { space, radius, fontSize, fontWeight, type SemanticTokens } from '@/lib/theme';
 import type { AppRole } from '@/lib/roles';
 import type { EventDetails, RSVPStatus } from '@ambo/database';
@@ -321,12 +324,20 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   };
 
   const handlePostComment = async () => {
-    if (!commentText.trim()) return;
     setPosting(true);
-    await postComment(commentText.trim());
-    setCommentText('');
+    const result = await sendDraft(commentText, async (message) => {
+      const error = await postComment(message);
+      if (error) throw error;
+    });
+    setCommentText(result.draft);
     setPosting(false);
-    if (isAdmin) commentInputRef.current?.focus();
+
+    if (result.sent) {
+      commentInputRef.current?.focus();
+    } else if (result.error) {
+      Alert.alert('Error', 'Failed to post comment');
+      AccessibilityInfo.announceForAccessibility('Failed to post comment.');
+    }
   };
 
   const getApiHeaders = async () => {
@@ -464,35 +475,17 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
 
   const keyboardOffset = Platform.OS === 'ios' ? insets.top + 44 : 0;
 
-  // The comment input. For admin it's a sticky footer rendered outside the
-  // ScrollView (docks to the keyboard); for student it's inline at the end of
-  // the ScrollView. Each role keeps its original layout/behavior.
   const commentInput = (
-    <View
-      style={[
-        isAdmin ? styles.commentInputDocked : styles.commentInputInline,
-        isAdmin && { paddingBottom: Math.max(space.sm, insets.bottom) },
-      ]}
-    >
-      <TextInput
-        ref={isAdmin ? (commentInputRef as any) : undefined}
-        mode="outlined"
-        placeholder="Add a comment..."
-        value={commentText}
-        onChangeText={setCommentText}
-        style={isAdmin ? styles.commentTextInputDocked : styles.commentTextInput}
-        dense
-        multiline={isAdmin}
-        blurOnSubmit={isAdmin ? false : undefined}
-      />
-      <IconButton
-        icon="send"
-        mode="contained"
-        onPress={handlePostComment}
-        disabled={!commentText.trim() || posting}
-        loading={posting}
-      />
-    </View>
+    <ComposerInput
+      ref={commentInputRef}
+      value={commentText}
+      onChangeText={setCommentText}
+      onSend={handlePostComment}
+      placeholder="Add a comment..."
+      sending={posting}
+      accessibilityLabel="Comment"
+      sendAccessibilityLabel="Post comment"
+    />
   );
 
   return (
@@ -825,12 +818,9 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
             </View>
           ))}
 
-          {/* Student: comment input is inline at the end of the ScrollView. */}
-          {!isAdmin && commentInput}
         </ScrollView>
 
-        {/* Admin: comment input docks to the keyboard as a sticky footer. */}
-        {isAdmin && commentInput}
+        {commentInput}
       </KeyboardAvoidingView>
       <UserListDialog
         visible={viewersOpen}
@@ -933,10 +923,4 @@ const makeStyles = (t: SemanticTokens) => StyleSheet.create({
   commentBody: { flex: 1 },
   commentAuthor: { fontWeight: fontWeight.semibold, marginBottom: space.xxs },
   commentTime: { color: t.textMuted, marginTop: space.xs },
-  // Admin: sticky footer that docks to the keyboard (rendered outside ScrollView).
-  commentInputDocked: { flexDirection: 'row', alignItems: 'flex-end', gap: space.xs, paddingHorizontal: space.sm, paddingTop: space.sm, backgroundColor: t.surface, borderTopWidth: 1, borderTopColor: t.border },
-  commentTextInputDocked: { flex: 1, backgroundColor: t.surface, maxHeight: 100 },
-  // Student: inline input at the end of the ScrollView.
-  commentInputInline: { flexDirection: 'row', alignItems: 'center', gap: space.xs, marginTop: space.sm },
-  commentTextInput: { flex: 1, backgroundColor: t.surface },
 });

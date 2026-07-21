@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import {
+  AccessibilityInfo,
   View,
   ScrollView,
   StyleSheet,
@@ -27,8 +28,10 @@ import { RoleBadge } from '@/components/RoleBadge';
 import { LoadingScreen } from '@/components/LoadingScreen';
 import { PostAttachments } from '@/components/PostAttachments';
 import { UserListDialog, DialogUser } from '@/components/UserListDialog';
+import { ComposerInput } from '@/components/ComposerInput';
 import { supabase } from '@/lib/supabase';
 import { getInitials } from '@/lib/format';
+import { sendDraft } from '@/lib/composer-state';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { space, fontSize, fontWeight, type SemanticTokens } from '@/lib/theme';
 import type { UserRole } from '@ambo/database';
@@ -179,16 +182,16 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
   };
 
   const handlePostComment = async () => {
-    if (!commentText.trim()) return;
     setPosting(true);
-    try {
-      await createComment(userId, commentText.trim());
-      setCommentText('');
+    const result = await sendDraft(commentText, (message) => createComment(userId, message));
+    setCommentText(result.draft);
+    setPosting(false);
+
+    if (result.sent) {
       commentInputRef.current?.focus();
-    } catch {
+    } else if (result.error) {
       Alert.alert('Error', 'Failed to post comment');
-    } finally {
-      setPosting(false);
+      AccessibilityInfo.announceForAccessibility('Failed to post comment.');
     }
   };
 
@@ -260,26 +263,20 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
           {/* Admin actions */}
           {showActions && (
             <View style={styles.adminActions}>
-              <Button
-                mode="outlined"
-                icon="pencil"
+              <IconButton
+                icon={editing ? 'close' : 'pencil-outline'}
+                accessibilityLabel={editing ? 'Cancel editing post' : 'Edit post'}
                 onPress={() => {
                   setEditing(!editing);
                   setEditText(post.content);
                 }}
-                compact
-              >
-                {editing ? 'Cancel Edit' : 'Edit'}
-              </Button>
-              <Button
-                mode="outlined"
-                icon="delete"
-                textColor={tokens.statusBadFg}
+              />
+              <IconButton
+                icon="delete-outline"
+                iconColor={tokens.statusBadFg}
+                accessibilityLabel="Delete post"
                 onPress={handleDelete}
-                compact
-              >
-                Delete
-              </Button>
+              />
             </View>
           )}
 
@@ -440,29 +437,16 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
           )}
         </ScrollView>
 
-        {/* Sticky comment input */}
-        <View
-          style={[styles.commentInput, { paddingBottom: Math.max(space.sm, insets.bottom) }]}
-        >
-          <TextInput
-            ref={commentInputRef as any}
-            mode="outlined"
-            placeholder="Add a comment..."
-            value={commentText}
-            onChangeText={setCommentText}
-            style={styles.commentTextInput}
-            dense
-            multiline
-            blurOnSubmit={false}
-          />
-          <IconButton
-            icon="send"
-            mode="contained"
-            onPress={handlePostComment}
-            disabled={!commentText.trim() || posting}
-            loading={posting}
-          />
-        </View>
+        <ComposerInput
+          ref={commentInputRef}
+          value={commentText}
+          onChangeText={setCommentText}
+          onSend={handlePostComment}
+          placeholder="Add a comment..."
+          sending={posting}
+          accessibilityLabel="Comment"
+          sendAccessibilityLabel="Post comment"
+        />
       </KeyboardAvoidingView>
       <UserListDialog visible={likesOpen} title={`Liked by ${post.like_count}`} users={likers} onDismiss={() => setLikesOpen(false)} />
       <UserListDialog visible={viewsOpen} title={`Seen by ${post.view_count}`} users={viewers} onDismiss={() => setViewsOpen(false)} />
@@ -511,17 +495,6 @@ const makeStyles = (t: SemanticTokens) => StyleSheet.create({
   },
   commentAuthor: { fontWeight: fontWeight.semibold },
   commentActions: { flexDirection: 'row' },
-  commentInput: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: space.xs,
-    paddingHorizontal: space.sm,
-    paddingTop: space.sm,
-    backgroundColor: t.surface,
-    borderTopWidth: 1,
-    borderTopColor: t.border,
-  },
-  commentTextInput: { flex: 1, backgroundColor: t.surface, maxHeight: 100 },
   engagementRow: { flexDirection: 'row', alignItems: 'center', marginTop: space.sm },
   engagementText: { color: t.textSecondary },
   // Cancels part of the IconButton's internal padding so the count hugs the heart
