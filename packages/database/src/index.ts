@@ -3,12 +3,14 @@ export type {
   UserRole,
   SubmissionStatus,
   RSVPStatus,
+  EventAttendanceStatus,
   User,
   Submission,
   EventDetails,
   EventComment,
   EventRSVP,
   EventRSVPOption,
+  EventAttendance,
 } from './types';
 export { SERVICE_TYPES } from './types';
 

@@ -1,6 +1,7 @@
 export type UserRole = "basic" | "student" | "admin" | "superadmin" | "applicant";
 export type SubmissionStatus = "Pending" | "Approved" | "Denied";
 export type RSVPStatus = "going" | "maybe" | "no";
+export type EventAttendanceStatus = "present" | "absent" | "excused_absent";
 
 export interface User {
   id: string;
@@ -59,6 +60,12 @@ export interface EventRSVP {
   user_id: string;
   rsvp_option_id?: string;
   rsvp_option?: EventRSVPOption;
+}
+
+export interface EventAttendance {
+  event_id: string;
+  user_id: string;
+  status: EventAttendanceStatus;
 }
 
 export const SERVICE_TYPES = [
