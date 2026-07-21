@@ -11,6 +11,7 @@ export const KeyboardAvoidingView = 'KeyboardAvoidingView';
 export const Pressable = 'Pressable';
 export const Platform = { OS: 'ios' };
 export const Alert = { alert: (..._args: unknown[]) => undefined };
+export const AccessibilityInfo = { announceForAccessibility: vi.fn() };
 export const StyleSheet = {
   create: <T>(styles: T) => styles,
   flatten: (style: unknown) => style,
@@ -32,6 +33,7 @@ export const mockState = {
   }>(),
   routerPush: vi.fn(),
   routerBack: vi.fn(),
+  inputFocus: vi.fn(),
   supabaseFrom: vi.fn(),
   detail: {
     comments: [] as unknown[],
@@ -120,6 +122,7 @@ export const Card = Object.assign('Card', { Content: 'CardContent' });
 export const Button = 'Button';
 export const TextInput = 'PaperTextInput';
 export const IconButton = 'IconButton';
+export const Icon = 'Icon';
 export const Divider = 'Divider';
 export const Avatar = { Text: 'AvatarText', Image: 'AvatarImage' };
 export const Portal = 'Portal';

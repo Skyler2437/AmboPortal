@@ -154,6 +154,8 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const [commentText, setCommentText] = useState('');
   const [posting, setPosting] = useState(false);
   const commentInputRef = useRef<RNTextInput>(null);
+  const commentTextRef = useRef('');
+  const commentPostInFlightRef = useRef(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sendingReminder, setSendingReminder] = useState(false);
@@ -324,12 +326,21 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   };
 
   const handlePostComment = async () => {
+    if (commentPostInFlightRef.current) return;
+    const submittedDraft = commentTextRef.current;
+    if (!submittedDraft.trim()) return;
+
+    commentPostInFlightRef.current = true;
     setPosting(true);
-    const result = await sendDraft(commentText, async (message) => {
+    const result = await sendDraft(submittedDraft, async (message) => {
       const error = await postComment(message);
       if (error) throw error;
     });
-    setCommentText(result.draft);
+    if (commentTextRef.current === submittedDraft) {
+      commentTextRef.current = result.draft;
+      setCommentText(result.draft);
+    }
+    commentPostInFlightRef.current = false;
     setPosting(false);
 
     if (result.sent) {
@@ -479,7 +490,10 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
     <ComposerInput
       ref={commentInputRef}
       value={commentText}
-      onChangeText={setCommentText}
+      onChangeText={(value) => {
+        commentTextRef.current = value;
+        setCommentText(value);
+      }}
       onSend={handlePostComment}
       placeholder="Add a comment..."
       sending={posting}

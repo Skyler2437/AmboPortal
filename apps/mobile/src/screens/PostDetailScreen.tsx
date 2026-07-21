@@ -97,6 +97,8 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
   const [commentText, setCommentText] = useState('');
   const [posting, setPosting] = useState(false);
   const commentInputRef = useRef<RNTextInput>(null);
+  const commentTextRef = useRef('');
+  const commentPostInFlightRef = useRef(false);
 
   // Comment edit state
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
@@ -182,9 +184,18 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
   };
 
   const handlePostComment = async () => {
+    if (commentPostInFlightRef.current) return;
+    const submittedDraft = commentTextRef.current;
+    if (!submittedDraft.trim()) return;
+
+    commentPostInFlightRef.current = true;
     setPosting(true);
-    const result = await sendDraft(commentText, (message) => createComment(userId, message));
-    setCommentText(result.draft);
+    const result = await sendDraft(submittedDraft, (message) => createComment(userId, message));
+    if (commentTextRef.current === submittedDraft) {
+      commentTextRef.current = result.draft;
+      setCommentText(result.draft);
+    }
+    commentPostInFlightRef.current = false;
     setPosting(false);
 
     if (result.sent) {
@@ -440,7 +451,10 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
         <ComposerInput
           ref={commentInputRef}
           value={commentText}
-          onChangeText={setCommentText}
+          onChangeText={(value) => {
+            commentTextRef.current = value;
+            setCommentText(value);
+          }}
           onSend={handlePostComment}
           placeholder="Add a comment..."
           sending={posting}

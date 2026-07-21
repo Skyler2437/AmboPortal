@@ -17,24 +17,37 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, onTypingChange, onHeightChange, disabled }: ChatInputProps) {
   const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
   const inputRef = useRef<RNTextInput>(null);
+  const textRef = useRef('');
+  const sendInFlightRef = useRef(false);
   const lastHeightRef = useRef(0);
 
   const handleSend = () => {
-    if (!text.trim()) return;
-    const message = text.trim();
+    if (disabled || sendInFlightRef.current) return;
+    const message = textRef.current.trim();
+    if (!message) return;
+
+    sendInFlightRef.current = true;
+    setSending(true);
+    textRef.current = '';
     setText('');
     onTypingChange?.(false);
 
     hapticLight();
     void Promise.resolve()
       .then(() => onSend(message))
-      .catch(() => AccessibilityInfo.announceForAccessibility('Message failed to send. Tap the failed message to retry.'));
+      .catch(() => AccessibilityInfo.announceForAccessibility('Message failed to send. Tap the failed message to retry.'))
+      .finally(() => {
+        sendInFlightRef.current = false;
+        setSending(false);
+      });
     // Keep the keyboard available for rapid consecutive messages.
     inputRef.current?.focus();
   };
 
   const handleChangeText = (value: string) => {
+    textRef.current = value;
     setText(value);
     onTypingChange?.(Boolean(value.trim()));
   };
@@ -53,6 +66,7 @@ export function ChatInput({ onSend, onTypingChange, onHeightChange, disabled }: 
       onChangeText={handleChangeText}
       onSend={handleSend}
       placeholder="Type a message..."
+      sending={sending}
       disabled={disabled}
       accessibilityLabel="Message"
       sendAccessibilityLabel="Send message"

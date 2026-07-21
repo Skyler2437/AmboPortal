@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import React from 'react';
-import { Alert } from 'react-native';
+import { AccessibilityInfo, Alert } from 'react-native';
 import {
   act,
   create,
@@ -54,7 +54,11 @@ async function flushEffects() {
 async function renderScreen(role: 'student' | 'admin' = 'student') {
   let renderer!: ReactTestRenderer;
   await act(async () => {
-    renderer = create(React.createElement(EventDetailScreen, { role }));
+    renderer = create(React.createElement(EventDetailScreen, { role }), {
+      createNodeMock: (element) => (
+        element.props.accessibilityLabel === 'Comment' ? { focus: mocks.inputFocus } : {}
+      ),
+    });
     await Promise.resolve();
     await Promise.resolve();
   });
@@ -103,6 +107,10 @@ beforeEach(() => {
   mocks.auth.userRole = 'student';
   mocks.routerPush.mockReset();
   mocks.routerBack.mockReset();
+  mocks.inputFocus.mockReset();
+  mocks.detail.postComment.mockReset();
+  mocks.detail.postComment.mockResolvedValue(null);
+  vi.mocked(AccessibilityInfo.announceForAccessibility).mockReset();
   mocks.supabaseFrom.mockReset();
   mocks.supabaseFrom.mockImplementation((table: string) => {
     if (table !== 'events') throw new Error(`Unexpected table: ${table}`);
@@ -133,6 +141,60 @@ beforeEach(() => {
 });
 
 describe('EventDetailScreen engagement behavior', () => {
+  it('guards duplicate comment sends and preserves a newer in-flight draft after success', async () => {
+    const request = deferred<null>();
+    mocks.detail.postComment.mockImplementation(() => request.promise);
+    const renderer = await renderScreen('student');
+
+    act(() => findByLabel(renderer, 'Comment').props.onChangeText('First draft'));
+    const send = findByLabel(renderer, 'Post comment').props.onPress;
+    let pending!: Promise<void>;
+    act(() => {
+      pending = send();
+      send();
+    });
+
+    expect(mocks.detail.postComment).toHaveBeenCalledTimes(1);
+    expect(mocks.detail.postComment).toHaveBeenCalledWith('First draft');
+    expect(findByLabel(renderer, 'Post comment').props.loading).toBe(true);
+
+    act(() => findByLabel(renderer, 'Comment').props.onChangeText('Newer draft'));
+    await act(async () => {
+      request.resolve(null);
+      await pending;
+    });
+
+    expect(findByLabel(renderer, 'Comment').props.value).toBe('Newer draft');
+    expect(mocks.inputFocus).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await findByLabel(renderer, 'Post comment').props.onPress();
+    });
+    expect(findByLabel(renderer, 'Comment').props.value).toBe('');
+    expect(mocks.inputFocus).toHaveBeenCalledTimes(2);
+  });
+
+  it('retains a failed comment and announces the error', async () => {
+    const request = deferred<Error | null>();
+    mocks.detail.postComment.mockImplementation(() => request.promise);
+    const renderer = await renderScreen('admin');
+
+    act(() => findByLabel(renderer, 'Comment').props.onChangeText('Keep this'));
+    let pending!: Promise<void>;
+    act(() => { pending = findByLabel(renderer, 'Post comment').props.onPress(); });
+    await act(async () => {
+      request.resolve(new Error('offline'));
+      await pending;
+    });
+
+    expect(findByLabel(renderer, 'Comment').props.value).toBe('Keep this');
+    expect(alertSpy).toHaveBeenCalledWith('Error', 'Failed to post comment');
+    expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith(
+      'Failed to post comment.',
+    );
+    expect(mocks.inputFocus).not.toHaveBeenCalled();
+  });
+
   it('records a view only after the current detail request resolves', async () => {
     const eventRequest = deferred<{ data: unknown; error: null }>();
     mocks.eventRequests.set('event-1', eventRequest.promise);

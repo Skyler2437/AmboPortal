@@ -40,6 +40,12 @@ export const ComposerInput = forwardRef<TextInput, ComposerInputProps>(function 
 }, ref) {
   const { styles, tokens } = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
+  const sendDisabled = !value.trim() || sending || disabled;
+
+  const handleSend = () => {
+    if (sendDisabled) return;
+    return onSend();
+  };
 
   return (
     <View
@@ -65,10 +71,11 @@ export const ComposerInput = forwardRef<TextInput, ComposerInputProps>(function 
         icon="send"
         mode="contained"
         size={20}
-        onPress={onSend}
-        disabled={!value.trim() || sending || disabled}
+        onPress={handleSend}
+        disabled={sendDisabled}
         loading={sending}
         accessibilityLabel={sendAccessibilityLabel}
+        accessibilityState={{ disabled: sendDisabled, busy: sending }}
       />
     </View>
   );

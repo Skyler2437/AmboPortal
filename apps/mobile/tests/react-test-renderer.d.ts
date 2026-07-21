@@ -17,7 +17,10 @@ declare module 'react-test-renderer' {
 
   export function create(
     element: ReactElement,
-    options?: { unstable_isConcurrent?: boolean },
+    options?: {
+      unstable_isConcurrent?: boolean;
+      createNodeMock?: (element: ReactElement<Record<string, any>>) => unknown;
+    },
   ): ReactTestRenderer;
   export function act(callback: () => void): void;
   export function act<T>(callback: () => Promise<T>): Promise<T>;
