@@ -102,7 +102,12 @@ export function attendanceStateReducer(
   if (action.type === 'load-started') {
     if (!action.ownerKey) return createAttendanceState();
     if (state.ownerKey === action.ownerKey) {
-      return { ...state, loading: true, saving: false, error: null };
+      const dirty = buildAttendanceChanges(
+        state.originalStatuses,
+        state.currentStatuses,
+      ).length > 0;
+      if (state.loading || state.saving || dirty) return state;
+      return { ...state, loading: true, error: null };
     }
     return { ...createAttendanceState(), ownerKey: action.ownerKey, loading: true };
   }
@@ -179,6 +184,7 @@ export function selectAttendanceState(
     error: ownsLoadedState ? state.error : null,
     dirty: changes.length > 0,
     canEdit: ownsLoadedState && !loading && !state.saving,
+    canRefresh: ownsLoadedState && !loading && !state.saving && changes.length === 0,
   };
 }
 

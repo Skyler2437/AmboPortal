@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { UserRole } from '@ambo/database';
 import {
   attendanceStateReducer,
@@ -35,7 +35,8 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 export function useEventAttendance(eventId: string, actor: EventAttendanceActor) {
-  const [state, dispatch] = useReducer(attendanceStateReducer, undefined, createAttendanceState);
+  const [state, setState] = useState(createAttendanceState);
+  const stateRef = useRef(state);
   const operationId = useRef(0);
   const actorUserId = actor.userId;
   const actorRole = actor.role;
@@ -46,15 +47,26 @@ export function useEventAttendance(eventId: string, actor: EventAttendanceActor)
   const requestedOwnerKeyRef = useRef(requestedOwnerKey);
   requestedOwnerKeyRef.current = requestedOwnerKey;
 
+  const dispatchAttendance = useCallback((
+    action: Parameters<typeof attendanceStateReducer>[1],
+  ) => {
+    const previous = stateRef.current;
+    const next = attendanceStateReducer(previous, action);
+    if (next === previous) return false;
+    stateRef.current = next;
+    setState(next);
+    return true;
+  }, []);
+
   const refetch = useCallback(async () => {
     const ownerKey = getAttendanceOwnerKey(eventId, {
       userId: actorUserId,
       role: actorRole,
     });
-    const activeOperation = ++operationId.current;
-    dispatch({ type: 'load-started', ownerKey });
+    const refreshStarted = dispatchAttendance({ type: 'load-started', ownerKey });
 
-    if (!ownerKey) return;
+    if (!ownerKey || !refreshStarted) return false;
+    const activeOperation = ++operationId.current;
 
     try {
       let profiles: AttendanceProfile[];
@@ -90,20 +102,22 @@ export function useEventAttendance(eventId: string, actor: EventAttendanceActor)
         activeOperation !== operationId.current
         || requestedOwnerKeyRef.current !== ownerKey
       ) return;
-      dispatch({ type: 'load-succeeded', ownerKey, roster: merged });
+      dispatchAttendance({ type: 'load-succeeded', ownerKey, roster: merged });
+      return true;
     } catch (caught) {
       if (
         activeOperation === operationId.current
         && requestedOwnerKeyRef.current === ownerKey
       ) {
-        dispatch({
+        dispatchAttendance({
           type: 'load-failed',
           ownerKey,
           error: errorMessage(caught, 'Unable to load attendance.'),
         });
       }
+      return false;
     }
-  }, [actorRole, actorUserId, eventId]);
+  }, [actorRole, actorUserId, dispatchAttendance, eventId]);
 
   useEffect(() => {
     void refetch();
@@ -119,17 +133,18 @@ export function useEventAttendance(eventId: string, actor: EventAttendanceActor)
 
   const setStatus = useCallback((userId: string, status: AttendanceStatus | null) => {
     if (!requestedOwnerKey) return;
-    dispatch({ type: 'status-changed', ownerKey: requestedOwnerKey, userId, status });
-  }, [requestedOwnerKey]);
+    dispatchAttendance({ type: 'status-changed', ownerKey: requestedOwnerKey, userId, status });
+  }, [dispatchAttendance, requestedOwnerKey]);
 
   const save = useCallback(async () => {
-    const plan = prepareAttendanceSave(state, requestedOwnerKey, eventId);
+    const plan = prepareAttendanceSave(stateRef.current, requestedOwnerKey, eventId);
     if (!plan || !requestedOwnerKey) return false;
     if (plan.changes.length === 0) return true;
 
     const ownerKey = requestedOwnerKey;
+    const saveStarted = dispatchAttendance({ type: 'save-started', ownerKey });
+    if (!saveStarted) return false;
     const activeOperation = ++operationId.current;
-    dispatch({ type: 'save-started', ownerKey });
 
     try {
       if (!DEMO_MODE) {
@@ -144,7 +159,7 @@ export function useEventAttendance(eventId: string, actor: EventAttendanceActor)
         activeOperation !== operationId.current
         || requestedOwnerKeyRef.current !== ownerKey
       ) return false;
-      dispatch({
+      dispatchAttendance({
         type: 'save-succeeded',
         ownerKey,
         savedStatuses: plan.savedStatuses,
@@ -155,7 +170,7 @@ export function useEventAttendance(eventId: string, actor: EventAttendanceActor)
         activeOperation === operationId.current
         && requestedOwnerKeyRef.current === ownerKey
       ) {
-        dispatch({
+        dispatchAttendance({
           type: 'save-failed',
           ownerKey,
           error: errorMessage(caught, 'Unable to save attendance.'),
@@ -163,7 +178,7 @@ export function useEventAttendance(eventId: string, actor: EventAttendanceActor)
       }
       return false;
     }
-  }, [eventId, requestedOwnerKey, state]);
+  }, [dispatchAttendance, eventId, requestedOwnerKey]);
 
   return {
     ...selected,

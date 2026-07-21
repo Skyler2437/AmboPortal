@@ -258,7 +258,7 @@ export function EventAttendanceScreen({ role }: { role: AppRole }) {
         keyExtractor={(student) => student.id}
         keyboardShouldPersistTaps="handled"
         refreshing={attendance.loading}
-        onRefresh={attendance.refetch}
+        onRefresh={attendance.canRefresh ? attendance.refetch : undefined}
         stickySectionHeadersEnabled
         contentContainerStyle={[
           styles.listContent,

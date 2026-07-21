@@ -199,6 +199,74 @@ describe('event attendance', () => {
     });
   });
 
+  it('rejects pull-to-refresh while selections are dirty and preserves them', () => {
+    const ownerKey = getAttendanceOwnerKey('event-1', {
+      userId: 'admin-1',
+      role: 'admin',
+    })!;
+    let state = createAttendanceState();
+    state = attendanceStateReducer(state, { type: 'load-started', ownerKey });
+    state = attendanceStateReducer(state, {
+      type: 'load-succeeded',
+      ownerKey,
+      roster: [students[3]],
+    });
+    expect(selectAttendanceState(state, ownerKey).canRefresh).toBe(true);
+
+    state = attendanceStateReducer(state, {
+      type: 'status-changed',
+      ownerKey,
+      userId: students[3].id,
+      status: 'absent',
+    });
+
+    const afterRefreshAttempt = attendanceStateReducer(state, {
+      type: 'load-started',
+      ownerKey,
+    });
+
+    expect(afterRefreshAttempt).toBe(state);
+    expect(selectAttendanceState(afterRefreshAttempt, ownerKey)).toMatchObject({
+      students: [expect.objectContaining({ id: students[3].id, attendanceStatus: 'absent' })],
+      dirty: true,
+      loading: false,
+      canRefresh: false,
+    });
+  });
+
+  it('rejects refresh while a save is in flight without clearing saving state', () => {
+    const ownerKey = getAttendanceOwnerKey('event-1', {
+      userId: 'admin-1',
+      role: 'admin',
+    })!;
+    let state = createAttendanceState();
+    state = attendanceStateReducer(state, { type: 'load-started', ownerKey });
+    state = attendanceStateReducer(state, {
+      type: 'load-succeeded',
+      ownerKey,
+      roster: [students[3]],
+    });
+    state = attendanceStateReducer(state, {
+      type: 'status-changed',
+      ownerKey,
+      userId: students[3].id,
+      status: 'absent',
+    });
+    state = attendanceStateReducer(state, { type: 'save-started', ownerKey });
+
+    const afterRefreshAttempt = attendanceStateReducer(state, {
+      type: 'load-started',
+      ownerKey,
+    });
+
+    expect(afterRefreshAttempt).toBe(state);
+    expect(selectAttendanceState(afterRefreshAttempt, ownerKey)).toMatchObject({
+      dirty: true,
+      saving: true,
+      canRefresh: false,
+    });
+  });
+
   it('plans only changed rows and refuses saves for stale or loading state', () => {
     const ownerKey = getAttendanceOwnerKey('event-1', {
       userId: 'admin-1',
