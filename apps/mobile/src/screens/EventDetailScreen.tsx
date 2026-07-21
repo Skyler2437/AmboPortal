@@ -44,6 +44,35 @@ function formatDateTime(dateStr: string) {
   };
 }
 
+type EngagementOwner = {
+  eventId: string;
+  generation: number;
+};
+
+type EventEngagementState = {
+  owner: EngagementOwner;
+  viewersOpen: boolean;
+  viewers: DialogUser[] | null;
+  viewerError: string | null;
+  presentOpen: boolean;
+  presentUsers: DialogUser[];
+  presentLoading: boolean;
+  presentError: string | null;
+};
+
+function createEventEngagementState(owner: EngagementOwner): EventEngagementState {
+  return {
+    owner,
+    viewersOpen: false,
+    viewers: [],
+    viewerError: null,
+    presentOpen: false,
+    presentUsers: [],
+    presentLoading: false,
+    presentError: null,
+  };
+}
+
 // ─── RSVP Button Component ──────────────────────────────
 interface RsvpButtonProps {
   label: string;
@@ -118,6 +147,14 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const isAdmin = role === 'admin';
   const { styles, tokens } = useThemedStyles(makeStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
+  const engagementOwnerRef = useRef<EngagementOwner>({ eventId: id, generation: 0 });
+  if (engagementOwnerRef.current.eventId !== id) {
+    engagementOwnerRef.current = {
+      eventId: id,
+      generation: engagementOwnerRef.current.generation + 1,
+    };
+  }
+  const engagementOwner = engagementOwnerRef.current;
   const { session, userRole } = useAuth();
   const userId = session?.user?.id || '';
   const router = useRouter();
@@ -130,10 +167,13 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const [saving, setSaving] = useState(false);
   const [sendingReminder, setSendingReminder] = useState(false);
   const [creatingChat, setCreatingChat] = useState(false);
-  const [viewersOpen, setViewersOpen] = useState(false);
-  const [viewers, setViewers] = useState<DialogUser[] | null>([]);
-  const [presentOpen, setPresentOpen] = useState(false);
-  const [presentUsers, setPresentUsers] = useState<DialogUser[]>([]);
+  const [engagementState, setEngagementState] = useState(() => (
+    createEventEngagementState(engagementOwner)
+  ));
+  const currentEngagement = engagementState.owner === engagementOwner
+    ? engagementState
+    : createEventEngagementState(engagementOwner);
+  const { viewersOpen, viewers, presentOpen, presentUsers } = currentEngagement;
 
   // Edit form state (admin only)
   const [editTitle, setEditTitle] = useState('');
@@ -146,6 +186,14 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const insets = useSafeAreaInsets();
   const { comments, rsvps, rsvpOptions, myRsvp, myRsvpOptionId, loading, updateRsvp, postComment } = useEventDetail(id, userId);
   const { viewCount, recordView, loadViewers } = useEventViews(id, userId);
+
+  useEffect(() => {
+    setEngagementState((current) => (
+      current.owner === engagementOwner
+        ? current
+        : createEventEngagementState(engagementOwner)
+    ));
+  }, [engagementOwner]);
 
   useEffect(() => {
     let active = true;
@@ -181,19 +229,44 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
 
   useEffect(() => {
     if (!event || event.id !== id) return;
+    const requestOwner = engagementOwner;
     let active = true;
+    setEngagementState((current) => ({
+      ...(current.owner === requestOwner
+        ? current
+        : createEventEngagementState(requestOwner)),
+      presentOpen: false,
+      presentUsers: [],
+      presentLoading: true,
+      presentError: null,
+    }));
     loadPresentUsers(id)
       .then((users) => {
-        if (active) setPresentUsers(users);
+        if (!active || engagementOwnerRef.current !== requestOwner) return;
+        setEngagementState((current) => (
+          current.owner === requestOwner
+            ? { ...current, presentUsers: users, presentLoading: false }
+            : current
+        ));
       })
       .catch((error) => {
         if (__DEV__) console.warn('[Event Attendance] Unable to load Present list:', error);
-        if (active) setPresentUsers([]);
+        if (!active || engagementOwnerRef.current !== requestOwner) return;
+        setEngagementState((current) => (
+          current.owner === requestOwner
+            ? {
+                ...current,
+                presentUsers: [],
+                presentLoading: false,
+                presentError: error instanceof Error ? error.message : 'Unable to load Present list.',
+              }
+            : current
+        ));
       });
     return () => {
       active = false;
     };
-  }, [event, id]);
+  }, [engagementOwner, event, id]);
 
   if (eventLoading || !event || event.id !== id) return <LoadingScreen />;
 
@@ -205,18 +278,48 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const maybeCount = rsvps.filter((r) => r.status === 'maybe').length;
 
   const handleOpenViewers = async () => {
-    setViewers(null);
-    setViewersOpen(true);
+    const requestOwner = engagementOwner;
+    if (engagementOwnerRef.current !== requestOwner) return;
+    setEngagementState((current) => ({
+      ...(current.owner === requestOwner
+        ? current
+        : createEventEngagementState(requestOwner)),
+      viewers: null,
+      viewersOpen: true,
+      viewerError: null,
+    }));
     try {
-      setViewers(await loadViewers());
+      const users = await loadViewers();
+      if (engagementOwnerRef.current !== requestOwner) return;
+      setEngagementState((current) => (
+        current.owner === requestOwner ? { ...current, viewers: users } : current
+      ));
     } catch (error) {
-      setViewersOpen(false);
+      if (engagementOwnerRef.current !== requestOwner) return;
+      const message = error instanceof Error
+        ? error.message
+        : 'Please check your connection and try again.';
+      setEngagementState((current) => (
+        current.owner === requestOwner
+          ? {
+              ...current,
+              viewers: [],
+              viewersOpen: false,
+              viewerError: message,
+            }
+          : current
+      ));
       Alert.alert(
         'Unable to Load Viewers',
-        error instanceof Error ? error.message : 'Please check your connection and try again.',
+        message,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Try Again', onPress: () => void handleOpenViewers() },
+          {
+            text: 'Try Again',
+            onPress: () => {
+              if (engagementOwnerRef.current === requestOwner) void handleOpenViewers();
+            },
+          },
         ],
       );
     }
@@ -644,7 +747,11 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Show ${presentUsers.length} present ${presentUsers.length === 1 ? 'person' : 'people'}`}
-                onPress={() => setPresentOpen(true)}
+                onPress={() => setEngagementState((current) => (
+                  current.owner === engagementOwner
+                    ? { ...current, presentOpen: true }
+                    : current
+                ))}
                 style={({ pressed }) => [styles.engagementButton, pressed && styles.engagementButtonPressed]}
               >
                 <MaterialCommunityIcons name="account-check-outline" size={18} color={tokens.statusGoodFg} />
@@ -734,13 +841,21 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
         visible={viewersOpen}
         title={`Seen by ${viewCount}`}
         users={viewers}
-        onDismiss={() => setViewersOpen(false)}
+        onDismiss={() => setEngagementState((current) => (
+          current.owner === engagementOwner
+            ? { ...current, viewersOpen: false }
+            : current
+        ))}
       />
       <UserListDialog
         visible={presentOpen}
         title={`Present (${presentUsers.length})`}
         users={presentUsers}
-        onDismiss={() => setPresentOpen(false)}
+        onDismiss={() => setEngagementState((current) => (
+          current.owner === engagementOwner
+            ? { ...current, presentOpen: false }
+            : current
+        ))}
       />
     </>
   );

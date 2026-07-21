@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "eas-cli": "^18.0.6",
+    "react-test-renderer": "^18.3.1",
     "turbo": "^2.5.0"
   },
   "packageManager": "npm@10.2.0",

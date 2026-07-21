@@ -25,8 +25,17 @@ export async function loadPresentUsers(eventId: string): Promise<DialogUser[]> {
 }
 
 export function useEventViews(eventId: string, userId: string) {
-  const [viewCount, setViewCount] = useState(0);
-  const recordedViewKey = useRef<string | null>(null);
+  const ownerRef = useRef({ eventId, generation: 0 });
+  if (ownerRef.current.eventId !== eventId) {
+    ownerRef.current = {
+      eventId,
+      generation: ownerRef.current.generation + 1,
+    };
+  }
+  const owner = ownerRef.current;
+  const [viewCountState, setViewCountState] = useState({ owner, count: 0 });
+  const recordedViewKeys = useRef(new Set<string>());
+  const viewCount = viewCountState.owner === owner ? viewCountState.count : 0;
 
   const loadViewCount = useCallback(async () => {
     const { count, error } = await supabase
@@ -35,21 +44,23 @@ export function useEventViews(eventId: string, userId: string) {
       .eq('event_id', eventId);
 
     if (error) throw error;
-    setViewCount(count ?? 0);
-  }, [eventId]);
+    if (ownerRef.current !== owner) return;
+    setViewCountState({ owner, count: count ?? 0 });
+  }, [eventId, owner]);
 
   useEffect(() => {
     if (!eventId) return;
+    setViewCountState({ owner, count: 0 });
     loadViewCount().catch((error) => {
       if (__DEV__) console.warn('[Event Views] Unable to load count:', error);
     });
-  }, [eventId, loadViewCount]);
+  }, [eventId, loadViewCount, owner]);
 
   const recordView = useCallback(async () => {
     if (!eventId || !userId) return;
     const viewKey = `${eventId}:${userId}`;
-    if (recordedViewKey.current === viewKey) return;
-    recordedViewKey.current = viewKey;
+    if (recordedViewKeys.current.has(viewKey)) return;
+    recordedViewKeys.current.add(viewKey);
 
     try {
       const { error } = await supabase.from('event_views').upsert(
@@ -57,11 +68,12 @@ export function useEventViews(eventId: string, userId: string) {
         { onConflict: 'event_id,user_id', ignoreDuplicates: true },
       );
       if (error) throw error;
+      if (ownerRef.current !== owner) return;
       await loadViewCount();
     } catch (error) {
       if (__DEV__) console.warn('[Event Views] Unable to record view:', error);
     }
-  }, [eventId, loadViewCount, userId]);
+  }, [eventId, loadViewCount, owner, userId]);
 
   const loadViewers = useCallback(async (): Promise<DialogUser[]> => {
     const { data, error } = await supabase
