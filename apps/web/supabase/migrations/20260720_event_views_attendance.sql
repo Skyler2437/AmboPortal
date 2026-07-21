@@ -145,7 +145,18 @@ drop policy if exists events_update_manager on public.events;
 create policy events_update_manager on public.events
   for update to authenticated
   using (public.can_manage_event(id))
-  with check (public.can_manage_event(id));
+  with check (
+    public.can_manage_event(id)
+    and (
+      created_by = auth.uid()
+      or exists (
+        select 1
+        from public.users u
+        where u.id = auth.uid()
+          and u.role in ('admin', 'superadmin')
+      )
+    )
+  );
 
 drop policy if exists "Admins can delete events" on public.events;
 drop policy if exists events_delete_manager on public.events;

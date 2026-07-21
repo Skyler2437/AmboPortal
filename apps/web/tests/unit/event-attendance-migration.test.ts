@@ -111,7 +111,7 @@ describe("event views and attendance migration", () => {
     );
     expect(sql).toContain("where id = changed_user_id and role = 'student'");
     expect(sql).toMatch(
-      /if changed_status is null then[\s\S]*delete from public\.event_attendance/
+      /if changed_status is null then\s+delete from public\.event_attendance\s+where event_id = target_event_id and user_id = changed_user_id;/
     );
     expect(sql).toContain(
       "elsif changed_status in ('present', 'absent', 'excused_absent') then"
@@ -138,7 +138,7 @@ describe("event views and attendance migration", () => {
       /create policy events_insert_own[\s\S]*created_by = auth\.uid\(\)[\s\S]*u\.role in \('student', 'admin', 'superadmin'\)/
     );
     expect(sql).toMatch(
-      /create policy events_update_manager[\s\S]*using \(public\.can_manage_event\(id\)\)[\s\S]*with check \(public\.can_manage_event\(id\)\)/
+      /create policy events_update_manager[\s\S]*using \(public\.can_manage_event\(id\)\)/
     );
     expect(sql).toMatch(
       /create policy events_delete_manager[\s\S]*using \(public\.can_manage_event\(id\)\)/
@@ -155,6 +155,17 @@ describe("event views and attendance migration", () => {
       );
     }
     expect(sql).toContain("public.can_manage_event(event_id)");
+  });
+
+  it("blocks student event ownership transfers while preserving admin updates", () => {
+    const sql = readMigration();
+    const updatePolicy =
+      sql.match(/create policy events_update_manager[\s\S]*?;/)?.[0] ?? "";
+
+    expect(updatePolicy).toContain("using (public.can_manage_event(id))");
+    expect(updatePolicy).toMatch(
+      /with check \(\s*public\.can_manage_event\(id\)\s*and\s*\(\s*created_by = auth\.uid\(\)\s*or\s*exists \(\s*select 1\s*from public\.users u\s*where u\.id = auth\.uid\(\)\s*and u\.role in \('admin', 'superadmin'\)\s*\)\s*\)\s*\)/
+    );
   });
 
   it("replaces the permissive live post insert policy with self-attribution", () => {
