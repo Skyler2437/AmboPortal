@@ -23,12 +23,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAuth } from '@/providers/AuthProvider';
 import { useEventDetail } from '@/hooks/useEventDetail';
+import { loadPresentUsers, useEventViews } from '@/hooks/useEventViews';
 import { supabase } from '@/lib/supabase';
 import { createChatGroup } from '@/lib/chat';
 import { LoadingScreen } from '@/components/LoadingScreen';
 import { EventDateTimePicker } from '@/components/EventDateTimePicker';
+import { UserListDialog, type DialogUser } from '@/components/UserListDialog';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { getInitials } from '@/lib/format';
+import { canManageEvent } from '@/lib/event-attendance';
 import { space, radius, fontSize, fontWeight, type SemanticTokens } from '@/lib/theme';
 import type { AppRole } from '@/lib/roles';
 import type { EventDetails, RSVPStatus } from '@ambo/database';
@@ -115,7 +118,7 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const isAdmin = role === 'admin';
   const { styles, tokens } = useThemedStyles(makeStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { session } = useAuth();
+  const { session, userRole } = useAuth();
   const userId = session?.user?.id || '';
   const router = useRouter();
   const [event, setEvent] = useState<EventDetails | null>(null);
@@ -127,6 +130,10 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const [saving, setSaving] = useState(false);
   const [sendingReminder, setSendingReminder] = useState(false);
   const [creatingChat, setCreatingChat] = useState(false);
+  const [viewersOpen, setViewersOpen] = useState(false);
+  const [viewers, setViewers] = useState<DialogUser[] | null>([]);
+  const [presentOpen, setPresentOpen] = useState(false);
+  const [presentUsers, setPresentUsers] = useState<DialogUser[]>([]);
 
   // Edit form state (admin only)
   const [editTitle, setEditTitle] = useState('');
@@ -138,15 +145,19 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
 
   const insets = useSafeAreaInsets();
   const { comments, rsvps, rsvpOptions, myRsvp, myRsvpOptionId, loading, updateRsvp, postComment } = useEventDetail(id, userId);
+  const { viewCount, recordView, loadViewers } = useEventViews(id, userId);
 
   useEffect(() => {
+    let active = true;
+    setEventLoading(true);
+    setEvent(null);
     async function fetchEvent() {
       const { data } = await supabase
         .from('events')
         .select('*')
         .eq('id', id)
         .single();
-      if (data) {
+      if (active && data) {
         const e = data as EventDetails;
         setEvent(e);
         setEditTitle(e.title);
@@ -155,18 +166,61 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
         setEditStartDate(new Date(e.start_time));
         setEditEndDate(new Date(e.end_time));
       }
-      setEventLoading(false);
+      if (active) setEventLoading(false);
     }
-    fetchEvent();
+    void fetchEvent();
+    return () => {
+      active = false;
+    };
   }, [id]);
 
-  if (eventLoading || !event) return <LoadingScreen />;
+  useEffect(() => {
+    if (!event || event.id !== id || !userId) return;
+    void recordView();
+  }, [event, id, recordView, userId]);
 
+  useEffect(() => {
+    if (!event || event.id !== id) return;
+    let active = true;
+    loadPresentUsers(id)
+      .then((users) => {
+        if (active) setPresentUsers(users);
+      })
+      .catch((error) => {
+        if (__DEV__) console.warn('[Event Attendance] Unable to load Present list:', error);
+        if (active) setPresentUsers([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [event, id]);
+
+  if (eventLoading || !event || event.id !== id) return <LoadingScreen />;
+
+  const canManage = canManageEvent(userId, userRole ?? role, event.created_by);
   const start = formatDateTime(event.start_time);
   const end = formatDateTime(event.end_time);
 
   const goingCount = rsvps.filter((r) => r.status === 'going').length;
   const maybeCount = rsvps.filter((r) => r.status === 'maybe').length;
+
+  const handleOpenViewers = async () => {
+    setViewers(null);
+    setViewersOpen(true);
+    try {
+      setViewers(await loadViewers());
+    } catch (error) {
+      setViewersOpen(false);
+      Alert.alert(
+        'Unable to Load Viewers',
+        error instanceof Error ? error.message : 'Please check your connection and try again.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Try Again', onPress: () => void handleOpenViewers() },
+        ],
+      );
+    }
+  };
 
   const handlePostComment = async () => {
     if (!commentText.trim()) return;
@@ -357,33 +411,49 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
           keyboardDismissMode={isAdmin ? 'interactive' : undefined}
         >
           {/* Actions */}
-          {isAdmin ? (
-            <View style={styles.adminActions}>
-              <IconButton
-                icon={editing ? 'close' : 'pencil'}
-                mode="outlined"
-                size={20}
-                onPress={() => setEditing(!editing)}
-                accessibilityLabel={editing ? 'Cancel editing' : 'Edit event'}
-              />
-              <IconButton
-                icon="delete"
-                mode="outlined"
-                size={20}
-                iconColor={tokens.statusBadFg}
-                onPress={handleDelete}
-                accessibilityLabel="Delete event"
-              />
-              <View style={styles.actionSpacer} />
-              <IconButton
-                icon="chat-plus-outline"
-                mode="outlined"
-                size={20}
-                onPress={handleCreateAttendeeChat}
-                loading={creatingChat}
-                disabled={creatingChat}
-                accessibilityLabel="Create chat with attendees"
-              />
+          <View style={isAdmin ? styles.adminActions : styles.actionRow}>
+            {canManage && (
+              <>
+                <IconButton
+                  icon={editing ? 'close' : 'pencil'}
+                  mode="outlined"
+                  size={20}
+                  onPress={() => setEditing(!editing)}
+                  accessibilityLabel={editing ? 'Cancel editing' : 'Edit event'}
+                />
+                <IconButton
+                  icon="delete"
+                  mode="outlined"
+                  size={20}
+                  iconColor={tokens.statusBadFg}
+                  onPress={handleDelete}
+                  accessibilityLabel="Delete event"
+                />
+                <Button
+                  mode="outlined"
+                  icon="clipboard-check-outline"
+                  compact
+                  onPress={() => router.push(
+                    `/(${role})/events/attendance/${id}` as Parameters<typeof router.push>[0],
+                  )}
+                  accessibilityLabel="Take attendance for this event"
+                  style={styles.attendanceButton}
+                >
+                  Take Attendance
+                </Button>
+              </>
+            )}
+            {isAdmin && <View style={styles.actionSpacer} />}
+            <IconButton
+              icon="chat-plus-outline"
+              mode="outlined"
+              size={20}
+              onPress={handleCreateAttendeeChat}
+              loading={creatingChat}
+              disabled={creatingChat}
+              accessibilityLabel="Create chat with attendees"
+            />
+            {isAdmin && (
               <IconButton
                 icon="bell-ring-outline"
                 mode="outlined"
@@ -391,24 +461,13 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 onPress={handleSendReminder}
                 loading={sendingReminder}
                 disabled={sendingReminder}
+                accessibilityLabel="Send event reminder"
               />
-            </View>
-          ) : (
-            <View style={styles.actionRow}>
-              <IconButton
-                icon="chat-plus-outline"
-                mode="outlined"
-                size={20}
-                onPress={handleCreateAttendeeChat}
-                loading={creatingChat}
-                disabled={creatingChat}
-                accessibilityLabel="Create chat with attendees"
-              />
-            </View>
-          )}
+            )}
+          </View>
 
-          {/* Event Info or Edit Form (edit form is admin only) */}
-          {isAdmin && editing ? (
+          {/* Event Info or Edit Form (managers only) */}
+          {canManage && editing ? (
             <View style={styles.editSection}>
               <TextInput
                 mode="outlined"
@@ -571,6 +630,29 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
             </View>
           )}
 
+          <View style={styles.engagementRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Seen by ${viewCount} ${viewCount === 1 ? 'person' : 'people'}`}
+              onPress={() => void handleOpenViewers()}
+              style={({ pressed }) => [styles.engagementButton, pressed && styles.engagementButtonPressed]}
+            >
+              <MaterialCommunityIcons name="eye-outline" size={18} color={tokens.textSecondary} />
+              <Text variant="bodySmall" style={styles.engagementText}>{viewCount} seen</Text>
+            </Pressable>
+            {presentUsers.length > 0 && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${presentUsers.length} present ${presentUsers.length === 1 ? 'person' : 'people'}`}
+                onPress={() => setPresentOpen(true)}
+                style={({ pressed }) => [styles.engagementButton, pressed && styles.engagementButtonPressed]}
+              >
+                <MaterialCommunityIcons name="account-check-outline" size={18} color={tokens.statusGoodFg} />
+                <Text variant="bodySmall" style={styles.presentText}>Present ({presentUsers.length})</Text>
+              </Pressable>
+            )}
+          </View>
+
           {/* Attendees */}
           {hasCustomOptions ? (
             <View style={styles.attendeesSection}>
@@ -648,6 +730,18 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
         {/* Admin: comment input docks to the keyboard as a sticky footer. */}
         {isAdmin && commentInput}
       </KeyboardAvoidingView>
+      <UserListDialog
+        visible={viewersOpen}
+        title={`Seen by ${viewCount}`}
+        users={viewers}
+        onDismiss={() => setViewersOpen(false)}
+      />
+      <UserListDialog
+        visible={presentOpen}
+        title={`Present (${presentUsers.length})`}
+        users={presentUsers}
+        onDismiss={() => setPresentOpen(false)}
+      />
     </>
   );
 }
@@ -662,7 +756,8 @@ const makeStyles = (t: SemanticTokens) => StyleSheet.create({
   contentStudent: { padding: space.lg, paddingBottom: space.xxl },
   adminActions: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.lg },
   actionSpacer: { flex: 1 },
-  actionRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: space.xs },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: space.xs, marginBottom: space.xs },
+  attendanceButton: { borderRadius: radius.md },
   editSection: { gap: space.md, marginBottom: space.sm },
   editInput: { backgroundColor: t.surface },
   saveButton: { borderRadius: radius.md, marginTop: space.xs },
@@ -690,6 +785,11 @@ const makeStyles = (t: SemanticTokens) => StyleSheet.create({
     borderWidth: 1.5,
   },
   rsvpBtnText: { fontSize: fontSize.sm },
+  engagementRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.lg, marginBottom: space.md },
+  engagementButton: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingVertical: space.xs },
+  engagementButtonPressed: { opacity: 0.65 },
+  engagementText: { color: t.textSecondary, fontWeight: fontWeight.medium },
+  presentText: { color: t.statusGoodFg, fontWeight: fontWeight.semibold },
 
   // Custom option chips
   optionChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
