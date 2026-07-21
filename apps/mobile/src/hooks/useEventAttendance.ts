@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { UserRole } from '@ambo/database';
 import {
-  buildAttendanceChanges,
-  buildAttendanceSections,
+  attendanceStateReducer,
+  createAttendanceState,
+  getAttendanceOwnerKey,
   mergeAttendanceRoster,
-  summarizeAttendance,
-  type AttendanceRosterStudent,
+  prepareAttendanceSave,
+  selectAttendanceState,
   type AttendanceStatus,
 } from '@/lib/event-attendance';
 import {
@@ -34,28 +35,26 @@ function errorMessage(error: unknown, fallback: string): string {
 }
 
 export function useEventAttendance(eventId: string, actor: EventAttendanceActor) {
-  const [roster, setRoster] = useState<AttendanceRosterStudent[]>([]);
-  const [originalStatuses, setOriginalStatuses] = useState<Map<string, AttendanceStatus | null>>(new Map());
-  const [currentStatuses, setCurrentStatuses] = useState<Map<string, AttendanceStatus | null>>(new Map());
-  const [loading, setLoading] = useState(Boolean(eventId));
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const requestId = useRef(0);
+  const [state, dispatch] = useReducer(attendanceStateReducer, undefined, createAttendanceState);
+  const operationId = useRef(0);
+  const actorUserId = actor.userId;
+  const actorRole = actor.role;
+  const requestedOwnerKey = getAttendanceOwnerKey(eventId, {
+    userId: actorUserId,
+    role: actorRole,
+  });
+  const requestedOwnerKeyRef = useRef(requestedOwnerKey);
+  requestedOwnerKeyRef.current = requestedOwnerKey;
 
   const refetch = useCallback(async () => {
-    const activeRequest = ++requestId.current;
+    const ownerKey = getAttendanceOwnerKey(eventId, {
+      userId: actorUserId,
+      role: actorRole,
+    });
+    const activeOperation = ++operationId.current;
+    dispatch({ type: 'load-started', ownerKey });
 
-    if (!eventId || !actor.userId) {
-      setRoster([]);
-      setOriginalStatuses(new Map());
-      setCurrentStatuses(new Map());
-      setError(null);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
+    if (!ownerKey) return;
 
     try {
       let profiles: AttendanceProfile[];
@@ -87,87 +86,87 @@ export function useEventAttendance(eventId: string, actor: EventAttendanceActor)
       }
 
       const merged = mergeAttendanceRoster(profiles, rsvps, attendance);
-      const statuses = new Map(merged.map((student) => [student.id, student.attendanceStatus]));
-
-      if (activeRequest !== requestId.current) return;
-      setRoster(merged);
-      setOriginalStatuses(statuses);
-      setCurrentStatuses(new Map(statuses));
+      if (
+        activeOperation !== operationId.current
+        || requestedOwnerKeyRef.current !== ownerKey
+      ) return;
+      dispatch({ type: 'load-succeeded', ownerKey, roster: merged });
     } catch (caught) {
-      if (activeRequest === requestId.current) {
-        setError(errorMessage(caught, 'Unable to load attendance.'));
+      if (
+        activeOperation === operationId.current
+        && requestedOwnerKeyRef.current === ownerKey
+      ) {
+        dispatch({
+          type: 'load-failed',
+          ownerKey,
+          error: errorMessage(caught, 'Unable to load attendance.'),
+        });
       }
-    } finally {
-      if (activeRequest === requestId.current) setLoading(false);
     }
-  }, [actor.userId, eventId]);
+  }, [actorRole, actorUserId, eventId]);
 
   useEffect(() => {
     void refetch();
     return () => {
-      requestId.current += 1;
+      operationId.current += 1;
     };
   }, [refetch]);
 
-  const students = useMemo(
-    () => roster.map((student) => ({
-      ...student,
-      attendanceStatus: currentStatuses.get(student.id) ?? null,
-    })),
-    [currentStatuses, roster],
-  );
-
-  const sections = useMemo(() => buildAttendanceSections(students), [students]);
-  const summary = useMemo(() => summarizeAttendance(students), [students]);
-  const changes = useMemo(
-    () => buildAttendanceChanges(originalStatuses, currentStatuses),
-    [currentStatuses, originalStatuses],
+  const selected = useMemo(
+    () => selectAttendanceState(state, requestedOwnerKey),
+    [requestedOwnerKey, state],
   );
 
   const setStatus = useCallback((userId: string, status: AttendanceStatus | null) => {
-    setCurrentStatuses((previous) => {
-      if (!previous.has(userId) || previous.get(userId) === status) return previous;
-      const next = new Map(previous);
-      next.set(userId, status);
-      return next;
-    });
-  }, []);
+    if (!requestedOwnerKey) return;
+    dispatch({ type: 'status-changed', ownerKey: requestedOwnerKey, userId, status });
+  }, [requestedOwnerKey]);
 
   const save = useCallback(async () => {
-    const pendingChanges = buildAttendanceChanges(originalStatuses, currentStatuses);
-    if (pendingChanges.length === 0) return true;
+    const plan = prepareAttendanceSave(state, requestedOwnerKey, eventId);
+    if (!plan || !requestedOwnerKey) return false;
+    if (plan.changes.length === 0) return true;
 
-    const savedSnapshot = new Map(currentStatuses);
-    setSaving(true);
-    setError(null);
+    const ownerKey = requestedOwnerKey;
+    const activeOperation = ++operationId.current;
+    dispatch({ type: 'save-started', ownerKey });
 
     try {
       if (!DEMO_MODE) {
         const { error: saveError } = await supabase.rpc('save_event_attendance', {
-          target_event_id: eventId,
-          changes: pendingChanges,
+          target_event_id: plan.targetEventId,
+          changes: plan.changes,
         });
         if (saveError) throw saveError;
       }
 
-      setOriginalStatuses(savedSnapshot);
+      if (
+        activeOperation !== operationId.current
+        || requestedOwnerKeyRef.current !== ownerKey
+      ) return false;
+      dispatch({
+        type: 'save-succeeded',
+        ownerKey,
+        savedStatuses: plan.savedStatuses,
+      });
       return true;
     } catch (caught) {
-      setError(errorMessage(caught, 'Unable to save attendance.'));
+      if (
+        activeOperation === operationId.current
+        && requestedOwnerKeyRef.current === ownerKey
+      ) {
+        dispatch({
+          type: 'save-failed',
+          ownerKey,
+          error: errorMessage(caught, 'Unable to save attendance.'),
+        });
+      }
       return false;
-    } finally {
-      setSaving(false);
     }
-  }, [currentStatuses, eventId, originalStatuses]);
+  }, [eventId, requestedOwnerKey, state]);
 
   return {
-    students,
-    sections,
-    summary,
-    loading,
-    error,
-    saving,
-    dirty: changes.length > 0,
+    ...selected,
     setStatus,
     save,
     refetch,

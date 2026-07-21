@@ -10,6 +10,8 @@ import { useEventAttendance } from '@/hooks/useEventAttendance';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { DEMO_MODE, demoEvents } from '@/lib/demo';
 import {
+  ATTENDANCE_STATUS_CHOICES,
+  attendanceStatusAccessibilityLabel,
   canManageEvent,
   type AttendanceRosterStudent,
   type AttendanceStatus,
@@ -37,10 +39,12 @@ interface StatusChoice {
 function AttendanceStudentRow({
   student,
   choices,
+  disabled,
   onChange,
 }: {
   student: AttendanceRosterStudent;
   choices: StatusChoice[];
+  disabled: boolean;
   onChange: (userId: string, status: AttendanceStatus | null) => void;
 }) {
   const { styles, tokens } = useThemedStyles(makeStyles);
@@ -65,15 +69,17 @@ function AttendanceStudentRow({
             <Pressable
               key={choice.label}
               accessibilityRole="radio"
-              accessibilityLabel={`Mark ${student.firstName} ${choice.label.toLowerCase()}`}
+              accessibilityLabel={attendanceStatusAccessibilityLabel(student, choice.label)}
+              accessibilityHint={choice.value === null ? 'Removes the stored attendance mark' : undefined}
               accessibilityState={{ selected }}
+              disabled={disabled}
               onPress={() => onChange(student.id, choice.value)}
               style={({ pressed }) => [
                 styles.statusButton,
                 {
                   backgroundColor: selected ? choice.background : tokens.surface,
                   borderColor: selected ? choice.border : tokens.border,
-                  opacity: pressed ? 0.75 : 1,
+                  opacity: disabled ? 0.5 : pressed ? 0.75 : 1,
                 },
               ]}
             >
@@ -104,6 +110,7 @@ export function EventAttendanceScreen({ role }: { role: AppRole }) {
   const userId = session?.user.id || '';
   const effectiveRole: UserRole = userRole ?? 'applicant';
   const [event, setEvent] = useState<AttendanceEvent | null>(null);
+  const [eventResultId, setEventResultId] = useState<string | null>(null);
   const [eventLoading, setEventLoading] = useState(true);
   const [eventError, setEventError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -115,6 +122,7 @@ export function EventAttendanceScreen({ role }: { role: AppRole }) {
       if (!id || !userId) {
         if (active) {
           setEvent(null);
+          setEventResultId(id || null);
           setEventError('Event not found.');
           setEventLoading(false);
         }
@@ -130,6 +138,7 @@ export function EventAttendanceScreen({ role }: { role: AppRole }) {
           setEvent(demoEvent
             ? { id: demoEvent.id, title: demoEvent.title, created_by: demoEvent.created_by }
             : null);
+          setEventResultId(id);
           setEventError(demoEvent ? null : 'Event not found.');
           setEventLoading(false);
         }
@@ -152,6 +161,7 @@ export function EventAttendanceScreen({ role }: { role: AppRole }) {
       } else {
         setEvent(data as AttendanceEvent);
       }
+      setEventResultId(id);
       setEventLoading(false);
     }
 
@@ -161,39 +171,45 @@ export function EventAttendanceScreen({ role }: { role: AppRole }) {
     };
   }, [authLoading, id, userId]);
 
-  const authorized = Boolean(event && canManageEvent(userId, effectiveRole, event.created_by));
+  const eventResultMatchesRoute = Boolean(id && eventResultId === id);
+  const eventMatchesRoute = Boolean(eventResultMatchesRoute && event && event.id === id);
+  const authorized = Boolean(
+    eventMatchesRoute && event && canManageEvent(userId, effectiveRole, event.created_by),
+  );
   const attendance = useEventAttendance(authorized ? id : '', { userId, role: effectiveRole });
 
-  const statusChoices = useMemo<StatusChoice[]>(() => [
-    {
-      label: 'Present',
-      value: 'present',
-      foreground: tokens.statusGoodFg,
-      background: tokens.statusGoodBg,
-      border: tokens.statusGoodBorder,
-    },
-    {
-      label: 'Absent',
-      value: 'absent',
-      foreground: tokens.statusBadFg,
-      background: tokens.statusBadBg,
-      border: tokens.statusBadBorder,
-    },
-    {
-      label: 'Excused',
-      value: 'excused_absent',
-      foreground: tokens.statusWarnFg,
-      background: tokens.statusWarnBg,
-      border: tokens.statusWarnBorder,
-    },
-    {
-      label: 'Clear',
-      value: null,
+  const statusChoices = useMemo<StatusChoice[]>(() => ATTENDANCE_STATUS_CHOICES.map((choice) => {
+    if (choice.value === 'present') {
+      return {
+        ...choice,
+        foreground: tokens.statusGoodFg,
+        background: tokens.statusGoodBg,
+        border: tokens.statusGoodBorder,
+      };
+    }
+    if (choice.value === 'absent') {
+      return {
+        ...choice,
+        foreground: tokens.statusBadFg,
+        background: tokens.statusBadBg,
+        border: tokens.statusBadBorder,
+      };
+    }
+    if (choice.value === 'excused_absent') {
+      return {
+        ...choice,
+        foreground: tokens.statusWarnFg,
+        background: tokens.statusWarnBg,
+        border: tokens.statusWarnBorder,
+      };
+    }
+    return {
+      ...choice,
       foreground: tokens.textSecondary,
       background: tokens.surfaceVariant,
       border: tokens.border,
-    },
-  ], [tokens]);
+    };
+  }), [tokens]);
 
   const filteredSections = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -212,7 +228,9 @@ export function EventAttendanceScreen({ role }: { role: AppRole }) {
     if (saved) Alert.alert('Attendance saved', 'All attendance changes were saved.');
   };
 
-  if (authLoading || eventLoading) return <LoadingScreen />;
+  if (authLoading || eventLoading || (Boolean(id) && !eventResultMatchesRoute)) {
+    return <LoadingScreen />;
+  }
   if (eventError || !event) return <ErrorState message={eventError || 'Event not found.'} />;
   if (!authorized) {
     return <ErrorState message="You don't have permission to manage this event's attendance." />;
@@ -225,7 +243,7 @@ export function EventAttendanceScreen({ role }: { role: AppRole }) {
   const summaryCards = [
     { label: 'Present', value: attendance.summary.present, foreground: tokens.statusGoodFg, background: tokens.statusGoodBg, border: tokens.statusGoodBorder },
     { label: 'Absent', value: attendance.summary.absent, foreground: tokens.statusBadFg, background: tokens.statusBadBg, border: tokens.statusBadBorder },
-    { label: 'Excused', value: attendance.summary.excused_absent, foreground: tokens.statusWarnFg, background: tokens.statusWarnBg, border: tokens.statusWarnBorder },
+    { label: 'Excused Absent', value: attendance.summary.excused_absent, foreground: tokens.statusWarnFg, background: tokens.statusWarnBg, border: tokens.statusWarnBorder },
     { label: 'Unmarked', value: attendance.summary.unmarked, foreground: tokens.textSecondary, background: tokens.surfaceVariant, border: tokens.border },
   ];
 
@@ -300,6 +318,7 @@ export function EventAttendanceScreen({ role }: { role: AppRole }) {
           <AttendanceStudentRow
             student={item}
             choices={statusChoices}
+            disabled={!attendance.canEdit}
             onChange={attendance.setStatus}
           />
         )}
@@ -314,7 +333,7 @@ export function EventAttendanceScreen({ role }: { role: AppRole }) {
           mode="contained"
           icon="content-save-outline"
           onPress={handleSave}
-          disabled={!attendance.dirty || attendance.saving}
+          disabled={!attendance.dirty || !attendance.canEdit}
           loading={attendance.saving}
           contentStyle={styles.saveButtonContent}
           style={styles.saveButton}

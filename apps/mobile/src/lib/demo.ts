@@ -129,6 +129,12 @@ export const demoEvents = [
     uniform: 'Ambassador polo', users: { role: 'admin' },
     rsvp_options: [], rsvpCounts: { going: 6, maybe: 0 }, myRsvpStatus: 'going', myRsvpOptionLabel: null,
   },
+  {
+    id: 'event-5', title: 'Student Welcome Crew', description: 'A student-led welcome and campus orientation for incoming ambassadors.',
+    start_time: daysFromNow(7, 15), end_time: daysFromNow(7, 17), type: 'Social', created_by: PEOPLE.alex.id,
+    uniform: 'Ambassador polo', users: { role: 'student' },
+    rsvp_options: [], rsvpCounts: { going: 4, maybe: 0 }, myRsvpStatus: 'going', myRsvpOptionLabel: null,
+  },
 ];
 
 /** Fabricated attendance data for screenshot/demo builds. */
