@@ -26,10 +26,16 @@ const mocks = vi.hoisted(() => ({
     uniform: "Ambassador Polo",
     google_calendar_event_id: null as string | null,
   },
+  eventResult: {
+    data: null as Record<string, unknown> | null,
+    error: null as { code?: string; message: string } | null,
+  },
   from: vi.fn(),
   update: vi.fn(),
   createCalendarEvent: vi.fn(),
   syncEventToGoogle: vi.fn(),
+  fullEventSingle: vi.fn(),
+  fullEventMaybeSingle: vi.fn(),
 }));
 
 const authClient = {
@@ -85,7 +91,10 @@ describe("POST /api/mobile/sync-event authorization", () => {
       error: null,
     };
     mocks.event.google_calendar_event_id = null;
+    mocks.eventResult = { data: mocks.event, error: null };
     mocks.createCalendarEvent.mockResolvedValue("google-event-1");
+    mocks.fullEventSingle.mockImplementation(async () => mocks.eventResult);
+    mocks.fullEventMaybeSingle.mockImplementation(async () => mocks.eventResult);
     mocks.update.mockReturnValue({
       eq: vi.fn(async () => ({ error: null })),
     });
@@ -109,7 +118,8 @@ describe("POST /api/mobile/sync-event authorization", () => {
               };
             }
             return {
-              single: vi.fn(async () => ({ data: mocks.event, error: null })),
+              single: mocks.fullEventSingle,
+              maybeSingle: mocks.fullEventMaybeSingle,
             };
           }),
         })),
@@ -149,6 +159,21 @@ describe("POST /api/mobile/sync-event authorization", () => {
     errorSpy.mockRestore();
   });
 
+  it("maps a role lookup failure to 500 before calendar or persistence side effects", async () => {
+    mocks.roleResult = {
+      data: null,
+      error: { code: "08006", message: "database unavailable" },
+    };
+
+    const response = await POST(request(VALID_EVENT_ID));
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "Request failed" });
+    expect(mocks.createCalendarEvent).not.toHaveBeenCalled();
+    expect(mocks.syncEventToGoogle).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
   it("maps a successful zero-row ownership lookup to 404", async () => {
     mocks.ownership = { data: null, error: null };
 
@@ -158,6 +183,35 @@ describe("POST /api/mobile/sync-event authorization", () => {
     expect(await response.json()).toEqual({ error: "Event not found" });
     expect(mocks.createCalendarEvent).not.toHaveBeenCalled();
     expect(mocks.syncEventToGoogle).not.toHaveBeenCalled();
+  });
+
+  it("maps a full-event lookup failure to 500 before calendar or persistence side effects", async () => {
+    mocks.eventResult = {
+      data: null,
+      error: { code: "08006", message: "database unavailable" },
+    };
+
+    const response = await POST(request(VALID_EVENT_ID));
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "Request failed" });
+    expect(mocks.createCalendarEvent).not.toHaveBeenCalled();
+    expect(mocks.syncEventToGoogle).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("uses zero-or-one semantics and maps a missing full event to 404", async () => {
+    mocks.eventResult = { data: null, error: null };
+
+    const response = await POST(request(VALID_EVENT_ID));
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "Event not found" });
+    expect(mocks.fullEventMaybeSingle).toHaveBeenCalledOnce();
+    expect(mocks.fullEventSingle).not.toHaveBeenCalled();
+    expect(mocks.createCalendarEvent).not.toHaveBeenCalled();
+    expect(mocks.syncEventToGoogle).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 
   it("prevents a non-owner student from reaching calendar side effects", async () => {

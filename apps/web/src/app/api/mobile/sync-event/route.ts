@@ -57,11 +57,18 @@ export async function POST(req: NextRequest) {
 
     // Load the role used by creator-aware event authorization.
     const supabase = createAdminClient();
-    const { data: user } = await supabase
+    const { data: user, error: userError } = await supabase
         .from("users")
         .select("role")
         .eq("id", userId)
         .single();
+
+    if (userError) {
+        return NextResponse.json(
+            { error: "Request failed" },
+            { status: 500 }
+        );
+    }
 
     if (!user) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -89,13 +96,20 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch the complete event after authorization
-    const { data: event, error } = await supabase
+    const { data: event, error: eventError } = await supabase
         .from("events")
         .select("*")
         .eq("id", eventId)
-        .single();
+        .maybeSingle();
 
-    if (error || !event) {
+    if (eventError) {
+        return NextResponse.json(
+            { error: "Request failed" },
+            { status: 500 }
+        );
+    }
+
+    if (!event) {
         return NextResponse.json(
             { error: "Event not found" },
             { status: 404 }
