@@ -3,7 +3,35 @@ import { getSession } from "@/lib/session";
 import { createAdminClient } from "@ambo/database/admin-client";
 import { createClient } from "@supabase/supabase-js";
 import { deleteCalendarEvent } from "@/lib/googleCalendar";
-import { authorizeEvent } from "@/lib/eventPermissions";
+import {
+    authorizeStoredEvent,
+    isValidEventId,
+    type EventActor,
+} from "@/lib/eventPermissions";
+
+type AdminClient = ReturnType<typeof createAdminClient>;
+
+async function getEventAuthorizationFailure(
+    supabase: AdminClient,
+    actor: EventActor,
+    eventId: string,
+): Promise<NextResponse | null> {
+    if (!isValidEventId(eventId)) {
+        return NextResponse.json({ error: "Invalid event ID" }, { status: 400 });
+    }
+
+    const authorization = await authorizeStoredEvent(actor, eventId, supabase);
+    if (authorization.status === "database_error") {
+        return NextResponse.json({ error: "Request failed" }, { status: 500 });
+    }
+    if (authorization.status === "not_found") {
+        return NextResponse.json({ error: "Event not found" }, { status: 404 });
+    }
+    if (authorization.status === "forbidden") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    return null;
+}
 
 /**
  * Authenticate via cookie session (web) or Bearer token (mobile).
@@ -58,19 +86,13 @@ export async function PUT(
     }
 
     const supabase = createAdminClient();
-    const authorization = await authorizeEvent(authUser, params.id, async (eventId) => {
-        const { data } = await supabase
-            .from("events")
-            .select("created_by")
-            .eq("id", eventId)
-            .maybeSingle();
-        return data ? data.created_by : undefined;
-    });
-    if (authorization.status === "not_found") {
-        return NextResponse.json({ error: "Event not found" }, { status: 404 });
-    }
-    if (authorization.status === "forbidden") {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const authorizationFailure = await getEventAuthorizationFailure(
+        supabase,
+        authUser,
+        params.id,
+    );
+    if (authorizationFailure) {
+        return authorizationFailure;
     }
 
     const body = await req.json();
@@ -182,19 +204,13 @@ export async function DELETE(
     }
 
     const supabase = createAdminClient();
-    const authorization = await authorizeEvent(authUser, params.id, async (eventId) => {
-        const { data } = await supabase
-            .from("events")
-            .select("created_by")
-            .eq("id", eventId)
-            .maybeSingle();
-        return data ? data.created_by : undefined;
-    });
-    if (authorization.status === "not_found") {
-        return NextResponse.json({ error: "Event not found" }, { status: 404 });
-    }
-    if (authorization.status === "forbidden") {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const authorizationFailure = await getEventAuthorizationFailure(
+        supabase,
+        authUser,
+        params.id,
+    );
+    if (authorizationFailure) {
+        return authorizationFailure;
     }
 
     // Fetch event first to get gcal ID

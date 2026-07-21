@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { authorizeEvent, canManageEvent } from "@/lib/eventPermissions";
+import {
+  authorizeEvent,
+  canManageEvent,
+  isValidEventId,
+} from "@/lib/eventPermissions";
 
 describe("canManageEvent", () => {
   it.each([
@@ -8,6 +12,8 @@ describe("canManageEvent", () => {
     [{ userId: "admin", role: "admin" }, "owner", true],
     [{ userId: "super", role: "superadmin" }, "owner", true],
     [{ userId: "applicant", role: "applicant" }, "applicant", false],
+    [{ userId: "admin", role: "admin" }, null, true],
+    [{ userId: "student", role: "student" }, null, false],
   ])("checks role and ownership", (user, createdBy, expected) => {
     expect(canManageEvent(user, createdBy)).toBe(expected);
   });
@@ -38,5 +44,18 @@ describe("canManageEvent", () => {
         loadCreator,
       ),
     ).resolves.toEqual({ status: "forbidden", createdBy: "owner" });
+  });
+});
+
+describe("isValidEventId", () => {
+  it.each([
+    ["550e8400-e29b-41d4-a716-446655440000", true],
+    ["", false],
+    ["not-a-uuid", false],
+    [" 550e8400-e29b-41d4-a716-446655440000 ", false],
+    [null, false],
+    [123, false],
+  ])("validates strict UUID strings", (value, expected) => {
+    expect(isValidEventId(value)).toBe(expected);
   });
 });

@@ -2,7 +2,10 @@ import { createClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@ambo/database/admin-client";
 import { NextRequest, NextResponse } from "next/server";
 import { createCalendarEvent } from "@/lib/googleCalendar";
-import { authorizeEvent } from "@/lib/eventPermissions";
+import {
+    authorizeStoredEvent,
+    isValidEventId,
+} from "@/lib/eventPermissions";
 
 async function getAuthenticatedUserId(
     req: NextRequest
@@ -44,6 +47,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const { eventId } = await req.json();
+    if (!isValidEventId(eventId)) {
+        return NextResponse.json(
+            { error: "Invalid eventId" },
+            { status: 400 }
+        );
+    }
+
     // Load the role used by creator-aware event authorization.
     const supabase = createAdminClient();
     const { data: user } = await supabase
@@ -56,26 +67,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { eventId } = await req.json();
-    if (!eventId) {
-        return NextResponse.json(
-            { error: "Missing eventId" },
-            { status: 400 }
-        );
-    }
-
-    const authorization = await authorizeEvent(
+    const authorization = await authorizeStoredEvent(
         { userId, role: user.role },
         eventId,
-        async (id) => {
-            const { data } = await supabase
-                .from("events")
-                .select("id, created_by")
-                .eq("id", id)
-                .maybeSingle();
-            return data ? data.created_by : undefined;
-        }
+        supabase,
     );
+    if (authorization.status === "database_error") {
+        return NextResponse.json(
+            { error: "Request failed" },
+            { status: 500 }
+        );
+    }
     if (authorization.status === "not_found") {
         return NextResponse.json(
             { error: "Event not found" },
