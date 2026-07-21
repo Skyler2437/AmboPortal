@@ -131,6 +131,26 @@ export const demoEvents = [
   },
 ];
 
+/** Fabricated attendance data for screenshot/demo builds. */
+export const demoAttendanceProfiles = [
+  { id: PEOPLE.alex.id, first_name: PEOPLE.alex.first_name, last_name: PEOPLE.alex.last_name, avatar_url: PEOPLE.alex.avatar_url },
+  { id: PEOPLE.maya.id, first_name: PEOPLE.maya.first_name, last_name: PEOPLE.maya.last_name, avatar_url: PEOPLE.maya.avatar_url },
+  { id: PEOPLE.sam.id, first_name: PEOPLE.sam.first_name, last_name: PEOPLE.sam.last_name, avatar_url: PEOPLE.sam.avatar_url },
+  { id: PEOPLE.noah.id, first_name: PEOPLE.noah.first_name, last_name: PEOPLE.noah.last_name, avatar_url: PEOPLE.noah.avatar_url },
+];
+
+export const demoAttendanceRsvps = [
+  { user_id: PEOPLE.alex.id, status: 'going' as const },
+  { user_id: PEOPLE.maya.id, status: 'going' as const },
+  { user_id: PEOPLE.sam.id, status: 'maybe' as const },
+];
+
+export const demoAttendanceRows = [
+  { user_id: PEOPLE.alex.id, status: 'present' as const },
+  { user_id: PEOPLE.maya.id, status: 'present' as const },
+  { user_id: PEOPLE.sam.id, status: 'excused_absent' as const },
+];
+
 /** Upcoming events for the student dashboard (id/title/start_time only). */
 export const demoUpcomingEvents = demoEvents
   .filter((e) => new Date(e.start_time) >= new Date())

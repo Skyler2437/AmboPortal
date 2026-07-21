@@ -23,6 +23,24 @@ export interface AttendanceChange {
   status: AttendanceStatus | null;
 }
 
+export function mergeAttendanceRoster(
+  profiles: Array<{ id: string; first_name: string; last_name: string; avatar_url?: string }>,
+  rsvps: Array<{ user_id: string; status: 'going' | 'maybe' | 'no' }>,
+  attendance: Array<{ user_id: string; status: AttendanceStatus }>,
+): AttendanceRosterStudent[] {
+  const rsvpByUser = new Map(rsvps.map((rsvp) => [rsvp.user_id, rsvp.status]));
+  const attendanceByUser = new Map(attendance.map((entry) => [entry.user_id, entry.status]));
+
+  return profiles.map((profile) => ({
+    id: profile.id,
+    firstName: profile.first_name,
+    lastName: profile.last_name,
+    avatarUrl: profile.avatar_url,
+    rsvpStatus: rsvpByUser.get(profile.id) ?? null,
+    attendanceStatus: attendanceByUser.get(profile.id) ?? null,
+  }));
+}
+
 const ORDER: AttendanceRsvpGroup[] = ['going', 'maybe', 'none', 'no'];
 const TITLES: Record<AttendanceRsvpGroup, string> = {
   going: 'Going',

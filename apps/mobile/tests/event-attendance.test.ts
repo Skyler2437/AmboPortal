@@ -3,6 +3,7 @@ import {
   buildAttendanceChanges,
   buildAttendanceSections,
   canManageEvent,
+  mergeAttendanceRoster,
   summarizeAttendance,
   type AttendanceStatus,
   type AttendanceRosterStudent,
@@ -31,6 +32,49 @@ describe('event attendance', () => {
 
   it('counts missing rows as unmarked', () => {
     expect(summarizeAttendance(students)).toEqual({ present: 1, absent: 1, excused_absent: 1, unmarked: 2 });
+  });
+
+  it('merges every student profile with optional RSVP and visible attendance rows', () => {
+    expect(mergeAttendanceRoster(
+      [
+        { id: 'one', first_name: 'Alex', last_name: 'Rivera', avatar_url: 'https://example.test/alex.png' },
+        { id: 'two', first_name: 'Maya', last_name: 'Chen' },
+        { id: 'three', first_name: 'Sam', last_name: 'Patel' },
+      ],
+      [
+        { user_id: 'one', status: 'going' },
+        { user_id: 'two', status: 'maybe' },
+      ],
+      [
+        { user_id: 'one', status: 'present' },
+        { user_id: 'three', status: 'excused_absent' },
+      ],
+    )).toEqual([
+      {
+        id: 'one',
+        firstName: 'Alex',
+        lastName: 'Rivera',
+        avatarUrl: 'https://example.test/alex.png',
+        rsvpStatus: 'going',
+        attendanceStatus: 'present',
+      },
+      {
+        id: 'two',
+        firstName: 'Maya',
+        lastName: 'Chen',
+        avatarUrl: undefined,
+        rsvpStatus: 'maybe',
+        attendanceStatus: null,
+      },
+      {
+        id: 'three',
+        firstName: 'Sam',
+        lastName: 'Patel',
+        avatarUrl: undefined,
+        rsvpStatus: null,
+        attendanceStatus: 'excused_absent',
+      },
+    ]);
   });
 
   it('emits only changed statuses and uses null to clear a row', () => {
