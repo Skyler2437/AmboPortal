@@ -34,6 +34,8 @@ const mocks = vi.hoisted(() => ({
   update: vi.fn(),
   createCalendarEvent: vi.fn(),
   syncEventToGoogle: vi.fn(),
+  roleSingle: vi.fn(),
+  roleMaybeSingle: vi.fn(),
   fullEventSingle: vi.fn(),
   fullEventMaybeSingle: vi.fn(),
 }));
@@ -93,6 +95,8 @@ describe("POST /api/mobile/sync-event authorization", () => {
     mocks.event.google_calendar_event_id = null;
     mocks.eventResult = { data: mocks.event, error: null };
     mocks.createCalendarEvent.mockResolvedValue("google-event-1");
+    mocks.roleSingle.mockImplementation(async () => mocks.roleResult);
+    mocks.roleMaybeSingle.mockImplementation(async () => mocks.roleResult);
     mocks.fullEventSingle.mockImplementation(async () => mocks.eventResult);
     mocks.fullEventMaybeSingle.mockImplementation(async () => mocks.eventResult);
     mocks.update.mockReturnValue({
@@ -103,7 +107,8 @@ describe("POST /api/mobile/sync-event authorization", () => {
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
-              single: vi.fn(async () => mocks.roleResult),
+              single: mocks.roleSingle,
+              maybeSingle: mocks.roleMaybeSingle,
             })),
           })),
         };
@@ -169,6 +174,20 @@ describe("POST /api/mobile/sync-event authorization", () => {
 
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: "Request failed" });
+    expect(mocks.createCalendarEvent).not.toHaveBeenCalled();
+    expect(mocks.syncEventToGoogle).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("uses zero-or-one semantics and forbids a missing user profile before side effects", async () => {
+    mocks.roleResult = { data: null, error: null };
+
+    const response = await POST(request(VALID_EVENT_ID));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Forbidden" });
+    expect(mocks.roleMaybeSingle).toHaveBeenCalledOnce();
+    expect(mocks.roleSingle).not.toHaveBeenCalled();
     expect(mocks.createCalendarEvent).not.toHaveBeenCalled();
     expect(mocks.syncEventToGoogle).not.toHaveBeenCalled();
     expect(mocks.update).not.toHaveBeenCalled();

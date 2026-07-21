@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
         .from("users")
         .select("role")
         .eq("id", userId)
-        .single();
+        .maybeSingle();
 
     if (userError) {
         return NextResponse.json(
