@@ -14,6 +14,9 @@ export type {
 } from './types';
 export { SERVICE_TYPES } from './types';
 
+// Shared defaults
+export { DEFAULT_EVENT_UNIFORM } from './constants';
+
 // Application types
 export type { ApplicationStatus, ApplicationData } from './application-types';
 

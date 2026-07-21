@@ -4,6 +4,7 @@ import { TextInput, Button, Text, IconButton } from 'react-native-paper';
 import { useRouter, Stack } from 'expo-router';
 import { useAuth } from '@/providers/AuthProvider';
 import { supabase } from '@/lib/supabase';
+import { DEFAULT_EVENT_UNIFORM } from '@ambo/database';
 import Constants from 'expo-constants';
 import { EventDateTimePicker } from '@/components/EventDateTimePicker';
 import { FormScreen, FormField } from '@/components/ui';
@@ -31,7 +32,7 @@ export function NewEventScreen({ role }: { role: AppRole }) {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [uniform, setUniform] = useState('');
+  const [uniform, setUniform] = useState(DEFAULT_EVENT_UNIFORM);
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(defaultEnd);
   const [allDay, setAllDay] = useState(true);
@@ -62,17 +63,20 @@ export function NewEventScreen({ role }: { role: AppRole }) {
 
     // Insert RSVP options if any
     const validOptions = rsvpOptions.filter(o => o.trim());
+    let rsvpOptionsError: { message: string } | null = null;
     if (validOptions.length > 0 && newEvent) {
-      await supabase.from('event_rsvp_options').insert(
+      const { error } = await supabase.from('event_rsvp_options').insert(
         validOptions.map((label, idx) => ({
           event_id: newEvent.id,
           label: label.trim(),
           sort_order: idx,
         }))
       );
+      rsvpOptionsError = error;
     }
 
     // Sync to Google Calendars (admin + all connected users)
+    let calendarSyncFailed = false;
     if (newEvent) {
       const webUrl = Constants.expoConfig?.extra?.webUrl || process.env.EXPO_PUBLIC_WEB_URL;
       const { data: { session: currentSession } } = await supabase.auth.getSession();
@@ -88,14 +92,31 @@ export function NewEventScreen({ role }: { role: AppRole }) {
           });
           if (!syncRes.ok) {
             console.warn('[GCal] Sync failed:', syncRes.status);
+            calendarSyncFailed = true;
           }
         } catch (err: unknown) {
           console.warn('[GCal] Sync error:', err instanceof Error ? err.message : err);
+          calendarSyncFailed = true;
         }
+      } else {
+        calendarSyncFailed = true;
       }
     }
 
     setCreating(false);
+    if (rsvpOptionsError || calendarSyncFailed) {
+      const followUps = [
+        rsvpOptionsError ? 'RSVP options were not saved' : null,
+        calendarSyncFailed ? 'calendar sync failed' : null,
+      ].filter(Boolean).join(', and ');
+      Alert.alert(
+        'Event created',
+        `The event exists in AmboPortal, but ${followUps}.`,
+        [{ text: 'OK', onPress: () => router.back() }],
+      );
+      return;
+    }
+
     router.back();
   };
 

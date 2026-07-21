@@ -74,6 +74,17 @@ describe("POST /api/events (create)", () => {
     expect(Object.keys(mockState.insertedPayload!)).not.toContain("location");
   });
 
+  it("uses the standard uniform when omitted", async () => {
+    const { uniform: _uniform, ...withoutUniform } = validBody;
+
+    const res = await POST(makeCreateRequest(withoutUniform));
+
+    expect(res.status).toBe(200);
+    expect(mockState.insertedPayload?.uniform).toBe(
+      "Ambo polo with khaki or navy pants/shorts (appropriate length)."
+    );
+  });
+
   it("returns 400 and logs the underlying error when the insert fails", async () => {
     mockState.insertError = { message: "column events.location does not exist" };
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { createAdminClient } from "@ambo/database/admin-client";
+import { DEFAULT_EVENT_UNIFORM } from "@ambo/database";
 import { createCalendarEvent } from "@/lib/googleCalendar";
 import { eventSchema, checkContentLength } from "@/lib/validations";
 
@@ -74,7 +75,7 @@ export async function POST(req: Request) {
         end_time,
         type: type || "Event",
         created_by: session.userId,
-        uniform: uniform || "Ambassador Polo with Navy Pants.",
+        uniform: uniform || DEFAULT_EVENT_UNIFORM,
     };
 
     const supabase = createAdminClient();
