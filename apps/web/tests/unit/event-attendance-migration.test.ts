@@ -14,6 +14,10 @@ const advisorFixMigrationPath = resolve(
   process.cwd(),
   "supabase/migrations/20260721171455_event_views_attendance_advisor_fixes.sql"
 );
+const securityHardeningMigrationPath = resolve(
+  process.cwd(),
+  "supabase/migrations/20260721180000_event_security_hardening.sql"
+);
 
 function readSql(path: string): string {
   return existsSync(path) ? readFileSync(path, "utf8") : "";
@@ -273,5 +277,95 @@ describe("event views and attendance corrective grants migration", () => {
       "revoke execute on function public.save_event_attendance(uuid, jsonb) from public, anon, authenticated",
       "grant execute on function public.save_event_attendance(uuid, jsonb) to authenticated",
     ]);
+  });
+});
+
+describe("event security hardening migration", () => {
+  it("allows direct event writes only through approved user-editable columns", () => {
+    const sql = readSql(securityHardeningMigrationPath);
+    const normalizedStatements = statements(sql);
+
+    expect(normalizedStatements).toContain(
+      "revoke insert, update on table public.events from public, anon, authenticated"
+    );
+    expect(normalizedStatements).toContain(
+      "grant insert (title, description, start_time, end_time, location, type, uniform, created_by) on public.events to authenticated"
+    );
+    expect(normalizedStatements).toContain(
+      "grant update (title, description, start_time, end_time, location, type, uniform) on public.events to authenticated"
+    );
+
+    const eventWriteGrants = normalizedStatements.filter((statement) =>
+      /^grant (insert|update)/i.test(statement)
+    );
+    expect(eventWriteGrants).toHaveLength(2);
+    for (const restrictedColumn of [
+      "id",
+      "created_at",
+      "google_calendar_event_id",
+      "reminder_sent",
+    ]) {
+      expect(eventWriteGrants.join(" ")).not.toMatch(
+        new RegExp(`\\b${restrictedColumn}\\b`)
+      );
+    }
+    expect(sql.indexOf("revoke insert, update")).toBeLessThan(
+      sql.indexOf("grant insert")
+    );
+  });
+
+  it("limits creator management authority to current students", () => {
+    const sql = readSql(securityHardeningMigrationPath);
+    const managerFunction =
+      sql.match(
+        /create or replace function public\.can_manage_event\(check_event_id uuid\)[\s\S]*?\$\$;/
+      )?.[0] ?? "";
+
+    expect(managerFunction).toMatch(/security definer[\s\S]*set search_path = ''/);
+    expect(managerFunction).toContain("u.role in ('admin', 'superadmin')");
+    expect(managerFunction).toContain(
+      "u.role = 'student' and e.created_by = auth.uid()"
+    );
+    expect(managerFunction).not.toMatch(
+      /or\s+e\.created_by\s*=\s*auth\.uid\(\)/
+    );
+    expect(sql).toContain(
+      "revoke execute on function public.can_manage_event(uuid) from public, anon, authenticated"
+    );
+    expect(sql).toContain(
+      "grant execute on function public.can_manage_event(uuid) to authenticated"
+    );
+  });
+
+  it("preserves attendance rows when the recording user is deleted", () => {
+    const sql = readSql(securityHardeningMigrationPath);
+
+    expect(sql).toMatch(
+      /alter table public\.event_attendance\s+alter column recorded_by drop not null/
+    );
+    expect(sql).toMatch(
+      /drop constraint if exists event_attendance_recorded_by_fkey/
+    );
+    expect(sql).toMatch(
+      /add constraint event_attendance_recorded_by_fkey\s+foreign key \(recorded_by\) references public\.users\(id\) on delete set null/
+    );
+  });
+
+  it("enforces safe event content and time bounds for new writes", () => {
+    const sql = readSql(securityHardeningMigrationPath);
+
+    expect(sql).toMatch(
+      /add constraint events_title_content_check\s+check \(char_length\(btrim\(title\)\) > 0 and char_length\(title\) <= 200\) not valid/
+    );
+    expect(sql).toMatch(
+      /add constraint events_description_length_check\s+check \(description is null or char_length\(description\) <= 5000\) not valid/
+    );
+    expect(sql).toMatch(
+      /add constraint events_uniform_length_check\s+check \(uniform is null or char_length\(uniform\) <= 500\) not valid/
+    );
+    expect(sql).toMatch(
+      /add constraint events_time_order_check\s+check \(end_time >= start_time\) not valid/
+    );
+    expect(sql).not.toMatch(/validate constraint/i);
   });
 });
