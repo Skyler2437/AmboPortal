@@ -200,9 +200,8 @@ export function registerAdminTools(server: McpServer) {
       description: z.string().max(5000).nullable().optional(),
       start_time: z.string().datetime().optional(),
       end_time: z.string().datetime().optional(),
-      location: z.string().max(500).nullable().optional(),
       type: z.string().max(100).optional(),
-      uniform: z.string().max(500).optional(),
+      uniform: z.string().max(500).nullable().optional(),
     }),
   }, async (args: any, extra: any) => {
     const { userId } = requireAdmin(extra, "write");
@@ -219,7 +218,7 @@ export function registerAdminTools(server: McpServer) {
 
     const { data, error } = await supabase
       .from("events").update(updates).eq("id", event_id)
-      .select("id, title, description, start_time, end_time, location, type, uniform").single();
+      .select("id, title, description, start_time, end_time, type, uniform").single();
     if (error) return textResult({ error: error.message });
     await logMcpAction(userId, "event.updated", "event", event_id, { fields: Object.keys(updates) });
     const calendarSync = await syncEventToGoogle(event_id);

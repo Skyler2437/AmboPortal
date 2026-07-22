@@ -267,6 +267,20 @@ describe("event update/delete authorization", () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
+  it("allows clearing the optional uniform while editing another event field", async () => {
+    const response = await PUT(new NextRequest(
+      `http://localhost:3000/api/events/${VALID_EVENT_ID}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ title: "Updated title", uniform: null }),
+        headers: { "Content-Type": "application/json" },
+      },
+    ), { params: { id: VALID_EVENT_ID } });
+
+    expect(response.status).toBe(200);
+    expect(mocks.update).toHaveBeenCalled();
+  });
+
   it("allows the student creator to delete the event", async () => {
     const response = await DELETE(request("DELETE"), {
       params: { id: VALID_EVENT_ID },

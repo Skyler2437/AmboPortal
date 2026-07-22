@@ -364,13 +364,17 @@ describe("event security hardening migration", () => {
       /add constraint events_uniform_length_check\s+check \(uniform is null or char_length\(uniform\) <= 500\) not valid/
     );
     expect(sql).toMatch(
+      /add constraint events_type_length_check\s+check \(type is null or char_length\(type\) <= 100\) not valid/
+    );
+    expect(sql).toMatch(
       /add constraint events_time_order_check\s+check \(end_time > start_time\) not valid/
     );
-    expect(sql.match(/validate constraint/g)).toHaveLength(4);
+    expect(sql.match(/validate constraint/g)).toHaveLength(5);
     for (const constraint of [
       "events_title_content_check",
       "events_description_length_check",
       "events_uniform_length_check",
+      "events_type_length_check",
       "events_time_order_check",
     ]) {
       expect(sql).toContain(`validate constraint ${constraint}`);

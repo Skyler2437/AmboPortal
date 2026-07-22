@@ -87,7 +87,7 @@ export const eventUpdateSchema = z.object({
     .nullable()
     .optional(),
   type: z.string().max(100, "Type must be 100 characters or less").optional(),
-  uniform: z.string().max(500, "Uniform must be 500 characters or less").optional(),
+  uniform: z.string().max(500, "Uniform must be 500 characters or less").nullable().optional(),
   rsvp_options: z.array(
     z.string().trim().min(1, "RSVP option cannot be blank").max(200, "RSVP option must be 200 characters or less"),
   ).max(50, "An event can have at most 50 RSVP options").optional(),

@@ -50,6 +50,9 @@ alter table public.events
   add constraint events_uniform_length_check
   check (uniform is null or char_length(uniform) <= 500) not valid;
 alter table public.events
+  add constraint events_type_length_check
+  check (type is null or char_length(type) <= 100) not valid;
+alter table public.events
   add constraint events_time_order_check
   check (end_time > start_time) not valid;
 
@@ -58,4 +61,5 @@ alter table public.events
 alter table public.events validate constraint events_title_content_check;
 alter table public.events validate constraint events_description_length_check;
 alter table public.events validate constraint events_uniform_length_check;
+alter table public.events validate constraint events_type_length_check;
 alter table public.events validate constraint events_time_order_check;
