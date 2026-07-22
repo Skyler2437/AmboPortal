@@ -366,6 +366,14 @@ describe("event security hardening migration", () => {
     expect(sql).toMatch(
       /add constraint events_time_order_check\s+check \(end_time > start_time\) not valid/
     );
-    expect(sql).not.toMatch(/validate constraint/i);
+    expect(sql.match(/validate constraint/g)).toHaveLength(4);
+    for (const constraint of [
+      "events_title_content_check",
+      "events_description_length_check",
+      "events_uniform_length_check",
+      "events_time_order_check",
+    ]) {
+      expect(sql).toContain(`validate constraint ${constraint}`);
+    }
   });
 });

@@ -52,3 +52,10 @@ alter table public.events
 alter table public.events
   add constraint events_time_order_check
   check (end_time > start_time) not valid;
+
+-- Production preflight found no legacy violations, so finish with fully
+-- validated constraints while retaining the low-lock add-then-validate path.
+alter table public.events validate constraint events_title_content_check;
+alter table public.events validate constraint events_description_length_check;
+alter table public.events validate constraint events_uniform_length_check;
+alter table public.events validate constraint events_time_order_check;
