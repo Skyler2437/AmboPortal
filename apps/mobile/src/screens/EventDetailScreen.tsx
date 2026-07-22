@@ -33,7 +33,6 @@ import { UserListDialog, type DialogUser } from '@/components/UserListDialog';
 import { ComposerInput } from '@/components/ComposerInput';
 import { LinkifiedText } from '@/components/LinkifiedText';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
-import { useAutoGrowingInput } from '@/hooks/useAutoGrowingInput';
 import { getInitials } from '@/lib/format';
 import { canManageEvent } from '@/lib/event-attendance';
 import { sendDraft } from '@/lib/composer-state';
@@ -179,8 +178,6 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const [editStartDate, setEditStartDate] = useState(new Date());
   const [editEndDate, setEditEndDate] = useState(new Date());
   const [editAllDay, setEditAllDay] = useState(false);
-  const descriptionInputSize = useAutoGrowingInput(112);
-  const uniformInputSize = useAutoGrowingInput(72);
 
   const insets = useSafeAreaInsets();
   const { comments, rsvps, rsvpOptions, myRsvp, myRsvpOptionId, loading, updateRsvp, postComment } = useEventDetail(id, userId);
@@ -613,11 +610,9 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 value={editDescription}
                 onChangeText={setEditDescription}
                 multiline
-                numberOfLines={4}
                 scrollEnabled={false}
-                onContentSizeChange={descriptionInputSize.onContentSizeChange}
                 dense
-                style={[styles.editInput, styles.textAreaInput, { height: descriptionInputSize.height }]}
+                style={[styles.editInput, styles.textAreaInput, { minHeight: 112 }]}
               />
               <TextInput
                 mode="outlined"
@@ -625,11 +620,9 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 value={editUniform}
                 onChangeText={setEditUniform}
                 multiline
-                numberOfLines={2}
                 scrollEnabled={false}
-                onContentSizeChange={uniformInputSize.onContentSizeChange}
                 dense
-                style={[styles.editInput, styles.textAreaInput, { height: uniformInputSize.height }]}
+                style={[styles.editInput, styles.textAreaInput, { minHeight: 72 }]}
                 placeholder="e.g. Ambassador Polo with Navy Pants"
               />
               <EventDateTimePicker

@@ -531,7 +531,7 @@ describe('EventDetailScreen engagement behavior', () => {
     expect(link.props.onPress).toEqual(expect.any(Function));
   });
 
-  it('resizes event description and uniform fields from their measured content', async () => {
+  it('lets event description and uniform fields size intrinsically above their minimum heights', async () => {
     mocks.eventRequests.set('event-1', Promise.resolve({
       data: testEvent('event-1', 'user-1'),
       error: null,
@@ -542,20 +542,10 @@ describe('EventDetailScreen engagement behavior', () => {
     const description = renderer.root.find((node) => node.props.label === 'Description');
     const uniform = renderer.root.find((node) => node.props.label === 'Uniform');
 
-    expect(flattenedStyle(description.props.style).height).toBe(112);
-    expect(flattenedStyle(uniform.props.style).height).toBe(72);
-
-    act(() => description.props.onContentSizeChange?.({
-      nativeEvent: { contentSize: { width: 260, height: 144 } },
-    }));
-    act(() => uniform.props.onContentSizeChange?.({
-      nativeEvent: { contentSize: { width: 260, height: 104 } },
-    }));
-
-    const resizedDescription = renderer.root.find((node) => node.props.label === 'Description');
-    const resizedUniform = renderer.root.find((node) => node.props.label === 'Uniform');
-    expect(flattenedStyle(resizedDescription.props.style).height).toBe(176);
-    expect(flattenedStyle(resizedUniform.props.style).height).toBe(136);
+    expect(flattenedStyle(description.props.style).minHeight).toBe(112);
+    expect(flattenedStyle(uniform.props.style).minHeight).toBe(72);
+    expect(flattenedStyle(description.props.style).height).toBeUndefined();
+    expect(flattenedStyle(uniform.props.style).height).toBeUndefined();
   });
 });
 

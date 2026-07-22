@@ -130,7 +130,6 @@ export function NewEventScreen({ role }: { role: AppRole }) {
           value={description}
           onChangeText={setDescription}
           multiline
-          numberOfLines={4}
           scrollEnabled={false}
           autoGrow
           minInputHeight={112}
@@ -141,7 +140,6 @@ export function NewEventScreen({ role }: { role: AppRole }) {
           value={uniform}
           onChangeText={setUniform}
           multiline
-          numberOfLines={2}
           scrollEnabled={false}
           autoGrow
           minInputHeight={72}

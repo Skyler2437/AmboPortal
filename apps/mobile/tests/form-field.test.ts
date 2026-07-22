@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 describe('FormField responsive sizing', () => {
-  it('grows and shrinks an auto-growing field from measured text content', () => {
+  it('uses intrinsic multiline sizing with a minimum height and no fixed-height feedback loop', () => {
     let renderer!: ReactTestRenderer;
     act(() => {
       renderer = create(React.createElement(FormField, {
@@ -33,18 +33,7 @@ describe('FormField responsive sizing', () => {
     let input = renderer.root.find((node) => node.type === 'PaperTextInput');
     expect(input.props.multiline).toBe(true);
     expect(input.props.scrollEnabled).toBe(false);
-    expect(flattenedStyle(input.props.style).height).toBe(72);
-
-    act(() => input.props.onContentSizeChange?.({
-      nativeEvent: { contentSize: { width: 260, height: 120 } },
-    }));
-    input = renderer.root.find((node) => node.type === 'PaperTextInput');
-    expect(flattenedStyle(input.props.style).height).toBe(152);
-
-    act(() => input.props.onContentSizeChange?.({
-      nativeEvent: { contentSize: { width: 260, height: 20 } },
-    }));
-    input = renderer.root.find((node) => node.type === 'PaperTextInput');
-    expect(flattenedStyle(input.props.style).height).toBe(72);
+    expect(flattenedStyle(input.props.style).minHeight).toBe(72);
+    expect(flattenedStyle(input.props.style).height).toBeUndefined();
   });
 });
