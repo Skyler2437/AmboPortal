@@ -121,10 +121,14 @@ describe('NewEventScreen creation', () => {
     const renderer = await renderScreen();
 
     expect(findFormField(renderer, 'Description').props).toEqual(expect.objectContaining({
+      autoGrow: true,
+      minInputHeight: 112,
       multiline: true,
       scrollEnabled: false,
     }));
     expect(findFormField(renderer, 'Uniform').props).toEqual(expect.objectContaining({
+      autoGrow: true,
+      minInputHeight: 72,
       multiline: true,
       scrollEnabled: false,
     }));

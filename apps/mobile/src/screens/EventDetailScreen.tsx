@@ -33,6 +33,7 @@ import { UserListDialog, type DialogUser } from '@/components/UserListDialog';
 import { ComposerInput } from '@/components/ComposerInput';
 import { LinkifiedText } from '@/components/LinkifiedText';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
+import { useAutoGrowingInput } from '@/hooks/useAutoGrowingInput';
 import { getInitials } from '@/lib/format';
 import { canManageEvent } from '@/lib/event-attendance';
 import { sendDraft } from '@/lib/composer-state';
@@ -178,6 +179,8 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const [editStartDate, setEditStartDate] = useState(new Date());
   const [editEndDate, setEditEndDate] = useState(new Date());
   const [editAllDay, setEditAllDay] = useState(false);
+  const descriptionInputSize = useAutoGrowingInput(112);
+  const uniformInputSize = useAutoGrowingInput(72);
 
   const insets = useSafeAreaInsets();
   const { comments, rsvps, rsvpOptions, myRsvp, myRsvpOptionId, loading, updateRsvp, postComment } = useEventDetail(id, userId);
@@ -612,8 +615,9 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 multiline
                 numberOfLines={4}
                 scrollEnabled={false}
+                onContentSizeChange={descriptionInputSize.onContentSizeChange}
                 dense
-                style={[styles.editInput, styles.descriptionInput]}
+                style={[styles.editInput, styles.textAreaInput, { height: descriptionInputSize.height }]}
               />
               <TextInput
                 mode="outlined"
@@ -623,8 +627,9 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 multiline
                 numberOfLines={2}
                 scrollEnabled={false}
+                onContentSizeChange={uniformInputSize.onContentSizeChange}
                 dense
-                style={[styles.editInput, styles.uniformInput]}
+                style={[styles.editInput, styles.textAreaInput, { height: uniformInputSize.height }]}
                 placeholder="e.g. Ambassador Polo with Navy Pants"
               />
               <EventDateTimePicker
@@ -906,8 +911,7 @@ const makeStyles = (t: SemanticTokens) => StyleSheet.create({
   attendanceButton: { borderColor: t.accent },
   editSection: { gap: space.md, marginBottom: space.sm },
   editInput: { backgroundColor: t.surface },
-  descriptionInput: { minHeight: 112, textAlignVertical: 'top' },
-  uniformInput: { minHeight: 72, textAlignVertical: 'top' },
+  textAreaInput: { textAlignVertical: 'top' },
   saveButton: { borderRadius: radius.md, marginTop: space.xs },
   title: { fontWeight: fontWeight.bold, marginBottom: space.md },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.sm },

@@ -98,6 +98,11 @@ function findAllByType(renderer: ReactTestRenderer, type: string) {
   return renderer.root.findAll((node) => node.type === type);
 }
 
+function flattenedStyle(style: unknown) {
+  const values = Array.isArray(style) ? style.flat(Infinity) : [style];
+  return Object.assign({}, ...values.filter(Boolean));
+}
+
 afterEach(() => {
   for (const renderer of mountedRenderers.splice(0)) {
     act(() => renderer.unmount());
@@ -526,7 +531,7 @@ describe('EventDetailScreen engagement behavior', () => {
     expect(link.props.onPress).toEqual(expect.any(Function));
   });
 
-  it('uses expanding multiline fields for event description and uniform edits', async () => {
+  it('resizes event description and uniform fields from their measured content', async () => {
     mocks.eventRequests.set('event-1', Promise.resolve({
       data: testEvent('event-1', 'user-1'),
       error: null,
@@ -537,14 +542,20 @@ describe('EventDetailScreen engagement behavior', () => {
     const description = renderer.root.find((node) => node.props.label === 'Description');
     const uniform = renderer.root.find((node) => node.props.label === 'Uniform');
 
-    expect(description.props).toEqual(expect.objectContaining({
-      multiline: true,
-      scrollEnabled: false,
+    expect(flattenedStyle(description.props.style).height).toBe(112);
+    expect(flattenedStyle(uniform.props.style).height).toBe(72);
+
+    act(() => description.props.onContentSizeChange?.({
+      nativeEvent: { contentSize: { width: 260, height: 144 } },
     }));
-    expect(uniform.props).toEqual(expect.objectContaining({
-      multiline: true,
-      scrollEnabled: false,
+    act(() => uniform.props.onContentSizeChange?.({
+      nativeEvent: { contentSize: { width: 260, height: 104 } },
     }));
+
+    const resizedDescription = renderer.root.find((node) => node.props.label === 'Description');
+    const resizedUniform = renderer.root.find((node) => node.props.label === 'Uniform');
+    expect(flattenedStyle(resizedDescription.props.style).height).toBe(176);
+    expect(flattenedStyle(resizedUniform.props.style).height).toBe(136);
   });
 });
 

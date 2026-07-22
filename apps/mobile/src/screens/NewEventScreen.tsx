@@ -132,6 +132,8 @@ export function NewEventScreen({ role }: { role: AppRole }) {
           multiline
           numberOfLines={4}
           scrollEnabled={false}
+          autoGrow
+          minInputHeight={112}
           style={styles.descriptionInput}
         />
         <FormField
@@ -141,6 +143,8 @@ export function NewEventScreen({ role }: { role: AppRole }) {
           multiline
           numberOfLines={2}
           scrollEnabled={false}
+          autoGrow
+          minInputHeight={72}
           style={styles.uniformInput}
         />
 
@@ -218,7 +222,7 @@ const makeStyles = (t: SemanticTokens) =>
     rsvpOptionRow: { flexDirection: 'row', alignItems: 'center', marginBottom: space.xs },
     rsvpOptionInput: { flex: 1, backgroundColor: t.surface },
     addOptionButton: { alignSelf: 'flex-start', marginBottom: space.sm },
-    descriptionInput: { minHeight: 112, textAlignVertical: 'top' },
-    uniformInput: { minHeight: 72, textAlignVertical: 'top' },
+    descriptionInput: { textAlignVertical: 'top' },
+    uniformInput: { textAlignVertical: 'top' },
     createButton: { borderRadius: radius.sm, marginTop: space.sm },
   });
