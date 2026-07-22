@@ -20,6 +20,7 @@ create table if not exists public.event_attendance (
   primary key (event_id, user_id)
 );
 create index if not exists idx_event_attendance_user_id on public.event_attendance(user_id);
+create index if not exists idx_event_attendance_recorded_by on public.event_attendance(recorded_by);
 alter table public.event_attendance enable row level security;
 revoke all on public.event_attendance from anon, authenticated;
 grant select on public.event_attendance to authenticated;
@@ -47,7 +48,7 @@ create policy event_views_select_authenticated on public.event_views
   for select to authenticated using (true);
 drop policy if exists event_views_insert_own on public.event_views;
 create policy event_views_insert_own on public.event_views
-  for insert to authenticated with check (user_id = auth.uid());
+  for insert to authenticated with check (user_id = (select auth.uid()));
 
 drop policy if exists event_attendance_select_visible on public.event_attendance;
 create policy event_attendance_select_visible on public.event_attendance
@@ -58,7 +59,7 @@ create policy event_attendance_select_visible on public.event_attendance
       status = 'present'
       and exists (
         select 1 from public.users u
-        where u.id = auth.uid()
+        where u.id = (select auth.uid())
           and u.role in ('student', 'admin', 'superadmin')
       )
     )
@@ -133,10 +134,10 @@ drop policy if exists events_insert_own on public.events;
 create policy events_insert_own on public.events
   for insert to authenticated
   with check (
-    created_by = auth.uid()
+    created_by = (select auth.uid())
     and exists (
       select 1 from public.users u
-      where u.id = auth.uid()
+      where u.id = (select auth.uid())
         and u.role in ('student', 'admin', 'superadmin')
     )
   );
@@ -149,11 +150,11 @@ create policy events_update_manager on public.events
   with check (
     public.can_manage_event(id)
     and (
-      created_by = auth.uid()
+      created_by = (select auth.uid())
       or exists (
         select 1
         from public.users u
-        where u.id = auth.uid()
+        where u.id = (select auth.uid())
           and u.role in ('admin', 'superadmin')
       )
     )
@@ -191,4 +192,4 @@ drop policy if exists "Authenticated users can create posts" on public.posts;
 drop policy if exists posts_insert_own on public.posts;
 create policy posts_insert_own on public.posts
   for insert to authenticated
-  with check (user_id = auth.uid());
+  with check (user_id = (select auth.uid()));

@@ -10,6 +10,10 @@ const correctiveMigrationPath = resolve(
   process.cwd(),
   "supabase/migrations/20260721170654_event_views_attendance_grants.sql"
 );
+const advisorFixMigrationPath = resolve(
+  process.cwd(),
+  "supabase/migrations/20260721171455_event_views_attendance_advisor_fixes.sql"
+);
 
 function readSql(path: string): string {
   return existsSync(path) ? readFileSync(path, "utf8") : "";
@@ -51,6 +55,9 @@ describe("event views and attendance migration", () => {
     );
     expect(sql).toContain(
       "create index if not exists idx_event_attendance_user_id on public.event_attendance(user_id)"
+    );
+    expect(sql).toContain(
+      "create index if not exists idx_event_attendance_recorded_by on public.event_attendance(recorded_by)"
     );
     expect(sql).toContain(
       "alter table public.event_views enable row level security"
@@ -107,10 +114,10 @@ describe("event views and attendance migration", () => {
       /create policy event_views_select_authenticated[\s\S]*for select to authenticated using \(true\)/
     );
     expect(sql).toMatch(
-      /create policy event_views_insert_own[\s\S]*for insert to authenticated with check \(user_id = auth\.uid\(\)\)/
+      /create policy event_views_insert_own[\s\S]*for insert to authenticated with check \(user_id = \(select auth\.uid\(\)\)\)/
     );
     expect(sql).toMatch(
-      /create policy event_attendance_select_visible[\s\S]*public\.can_manage_event\(event_id\)[\s\S]*status = 'present'[\s\S]*u\.role in \('student', 'admin', 'superadmin'\)/
+      /create policy event_attendance_select_visible[\s\S]*public\.can_manage_event\(event_id\)[\s\S]*status = 'present'[\s\S]*u\.id = \(select auth\.uid\(\)\)[\s\S]*u\.role in \('student', 'admin', 'superadmin'\)/
     );
     expect(sql).not.toMatch(
       /create policy event_attendance_(insert|update|delete)/
@@ -171,7 +178,7 @@ describe("event views and attendance migration", () => {
       'drop policy if exists "Members can insert events" on public.events'
     );
     expect(sql).toMatch(
-      /create policy events_insert_own[\s\S]*created_by = auth\.uid\(\)[\s\S]*u\.role in \('student', 'admin', 'superadmin'\)/
+      /create policy events_insert_own[\s\S]*created_by = \(select auth\.uid\(\)\)[\s\S]*u\.id = \(select auth\.uid\(\)\)[\s\S]*u\.role in \('student', 'admin', 'superadmin'\)/
     );
     expect(sql).toMatch(
       /create policy events_update_manager[\s\S]*using \(public\.can_manage_event\(id\)\)/
@@ -200,7 +207,7 @@ describe("event views and attendance migration", () => {
 
     expect(updatePolicy).toContain("using (public.can_manage_event(id))");
     expect(updatePolicy).toMatch(
-      /with check \(\s*public\.can_manage_event\(id\)\s*and\s*\(\s*created_by = auth\.uid\(\)\s*or\s*exists \(\s*select 1\s*from public\.users u\s*where u\.id = auth\.uid\(\)\s*and u\.role in \('admin', 'superadmin'\)\s*\)\s*\)\s*\)/
+      /with check \(\s*public\.can_manage_event\(id\)\s*and\s*\(\s*created_by = \(select auth\.uid\(\)\)\s*or\s*exists \(\s*select 1\s*from public\.users u\s*where u\.id = \(select auth\.uid\(\)\)\s*and u\.role in \('admin', 'superadmin'\)\s*\)\s*\)\s*\)/
     );
   });
 
@@ -211,11 +218,46 @@ describe("event views and attendance migration", () => {
       'drop policy if exists "Authenticated users can create posts" on public.posts'
     );
     expect(sql).toMatch(
-      /create policy posts_insert_own on public\.posts\s+for insert to authenticated\s+with check \(user_id = auth\.uid\(\)\)/
+      /create policy posts_insert_own on public\.posts\s+for insert to authenticated\s+with check \(user_id = \(select auth\.uid\(\)\)\)/
     );
     expect(sql.match(/create policy posts_[\w]+ on public\.posts/g)).toHaveLength(
       1
     );
+  });
+});
+
+describe("event views and attendance advisor fixes migration", () => {
+  it("contains only the missing index and five optimized policy replacements", () => {
+    const sql = readSql(advisorFixMigrationPath);
+
+    expect(statements(sql)).toEqual([
+      "create index if not exists idx_event_attendance_recorded_by on public.event_attendance(recorded_by)",
+      "drop policy if exists event_views_insert_own on public.event_views",
+      "create policy event_views_insert_own on public.event_views for insert to authenticated with check (user_id = (select auth.uid()))",
+      "drop policy if exists event_attendance_select_visible on public.event_attendance",
+      "create policy event_attendance_select_visible on public.event_attendance for select to authenticated using ( public.can_manage_event(event_id) or ( status = 'present' and exists ( select 1 from public.users u where u.id = (select auth.uid()) and u.role in ('student', 'admin', 'superadmin') ) ) )",
+      "drop policy if exists events_insert_own on public.events",
+      "create policy events_insert_own on public.events for insert to authenticated with check ( created_by = (select auth.uid()) and exists ( select 1 from public.users u where u.id = (select auth.uid()) and u.role in ('student', 'admin', 'superadmin') ) )",
+      "drop policy if exists events_update_manager on public.events",
+      "create policy events_update_manager on public.events for update to authenticated using (public.can_manage_event(id)) with check ( public.can_manage_event(id) and ( created_by = (select auth.uid()) or exists ( select 1 from public.users u where u.id = (select auth.uid()) and u.role in ('admin', 'superadmin') ) ) )",
+      "drop policy if exists posts_insert_own on public.posts",
+      "create policy posts_insert_own on public.posts for insert to authenticated with check (user_id = (select auth.uid()))",
+    ]);
+  });
+
+  it("preserves row-dependent event authorization calls and has no data changes", () => {
+    const sql = readSql(advisorFixMigrationPath);
+
+    expect(sql).toContain("public.can_manage_event(event_id)");
+    expect(sql).toContain("public.can_manage_event(id)");
+    expect(sql).not.toMatch(
+      /public\.can_manage_event\(\(select (event_id|id)\)\)/
+    );
+    for (const statement of statements(sql)) {
+      expect(statement).not.toMatch(
+        /^(insert into|update public\.|delete from|alter table|create table|drop table)\b/i
+      );
+    }
   });
 });
 
