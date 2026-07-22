@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const creationState = vi.hoisted(() => ({
   eventPayload: null as Record<string, unknown> | null,
+  eventInsertCount: 0,
   eventResult: {
     data: { id: 'event-1' } as { id: string } | null,
     error: null as { message: string } | null,
@@ -59,6 +60,7 @@ async function createEvent(renderer: ReactTestRenderer) {
 
 beforeEach(() => {
   creationState.eventPayload = null;
+  creationState.eventInsertCount = 0;
   creationState.eventResult = { data: { id: 'event-1' }, error: null };
   creationState.rsvpError = null;
   mocks.routerBack.mockReset();
@@ -69,6 +71,7 @@ beforeEach(() => {
       return {
         insert: vi.fn((payload: Record<string, unknown>) => {
           creationState.eventPayload = payload;
+          creationState.eventInsertCount += 1;
           return {
             select: () => ({ single: async () => creationState.eventResult }),
           };
@@ -139,6 +142,13 @@ describe('NewEventScreen creation', () => {
       expect.any(Array),
     );
     expect(mocks.routerBack).not.toHaveBeenCalled();
+
+    const actions = alertSpy.mock.calls[0]?.[2];
+    expect(actions).toHaveLength(1);
+    act(() => actions?.[0]?.onPress?.());
+
+    expect(creationState.eventInsertCount).toBe(1);
+    expect(mocks.routerBack).toHaveBeenCalledTimes(1);
   });
 
   it('reports saved-event calendar sync failures before returning', async () => {
@@ -153,6 +163,13 @@ describe('NewEventScreen creation', () => {
       expect.any(Array),
     );
     expect(mocks.routerBack).not.toHaveBeenCalled();
+
+    const actions = alertSpy.mock.calls[0]?.[2];
+    expect(actions).toHaveLength(1);
+    act(() => actions?.[0]?.onPress?.());
+
+    expect(creationState.eventInsertCount).toBe(1);
+    expect(mocks.routerBack).toHaveBeenCalledTimes(1);
   });
 
   it('returns exactly once after a fully successful creation', async () => {
