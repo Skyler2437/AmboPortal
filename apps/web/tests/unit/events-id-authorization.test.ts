@@ -18,6 +18,15 @@ const mocks = vi.hoisted(() => ({
   deleteEvent: vi.fn(),
   syncEventToGoogle: vi.fn(),
   deleteCalendarEvent: vi.fn(),
+  currentRole: "student" as string | null,
+  currentRoleError: null as { message: string } | null,
+  storedTimes: {
+    data: {
+      start_time: "2026-08-01T17:00:00.000Z",
+      end_time: "2026-08-01T19:00:00.000Z",
+    } as { start_time: string; end_time: string } | null,
+    error: null as { message: string } | null,
+  },
 }));
 
 const mockSupabase = {
@@ -62,6 +71,15 @@ describe("event update/delete authorization", () => {
       error: null,
     };
     mocks.syncEventToGoogle.mockResolvedValue({ synced: true });
+    mocks.currentRole = "student";
+    mocks.currentRoleError = null;
+    mocks.storedTimes = {
+      data: {
+        start_time: "2026-08-01T17:00:00.000Z",
+        end_time: "2026-08-01T19:00:00.000Z",
+      },
+      error: null,
+    };
     mocks.update.mockReturnValue({
       eq: vi.fn(() => ({
         select: vi.fn(() => ({
@@ -76,6 +94,18 @@ describe("event update/delete authorization", () => {
       eq: vi.fn(async () => ({ error: null })),
     });
     mocks.from.mockImplementation((table: string) => {
+      if (table === "users") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({
+                data: mocks.currentRole ? { role: mocks.currentRole } : null,
+                error: mocks.currentRoleError,
+              })),
+            })),
+          })),
+        };
+      }
       expect(table).toBe("events");
       return {
         select: vi.fn((columns: string) => ({
@@ -83,6 +113,11 @@ describe("event update/delete authorization", () => {
             if (columns === "created_by") {
               return {
                 maybeSingle: vi.fn(async () => mocks.ownership),
+              };
+            }
+            if (columns === "start_time, end_time") {
+              return {
+                maybeSingle: vi.fn(async () => mocks.storedTimes),
               };
             }
             return {
@@ -184,6 +219,52 @@ describe("event update/delete authorization", () => {
     expect(response.status).toBe(200);
     expect(mocks.update).toHaveBeenCalled();
     expect(mocks.syncEventToGoogle).toHaveBeenCalledWith(VALID_EVENT_ID);
+  });
+
+  it.each(["PUT", "DELETE"] as const)(
+    "%s rejects a stale privileged cookie after the database role is demoted",
+    async (method) => {
+      mocks.session = { userId: "owner", role: "superadmin" };
+      mocks.currentRole = "applicant";
+      const handler = method === "PUT" ? PUT : DELETE;
+
+      const response = await handler(request(method), {
+        params: { id: VALID_EVENT_ID },
+      });
+
+      expect(response.status).toBe(403);
+      expect(mocks.update).not.toHaveBeenCalled();
+      expect(mocks.deleteEvent).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects server-managed fields in an update body", async () => {
+    const response = await PUT(new NextRequest(
+      `http://localhost:3000/api/events/${VALID_EVENT_ID}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ google_calendar_event_id: "copied-id" }),
+        headers: { "Content-Type": "application/json" },
+      },
+    ), { params: { id: VALID_EVENT_ID } });
+
+    expect(response.status).toBe(400);
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects an update whose effective end is not after its start", async () => {
+    const response = await PUT(new NextRequest(
+      `http://localhost:3000/api/events/${VALID_EVENT_ID}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ start_time: "2026-08-01T20:00:00.000Z" }),
+        headers: { "Content-Type": "application/json" },
+      },
+    ), { params: { id: VALID_EVENT_ID } });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "End time must be after start time" });
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 
   it("allows the student creator to delete the event", async () => {

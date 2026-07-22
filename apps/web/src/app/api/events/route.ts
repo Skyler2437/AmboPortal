@@ -48,7 +48,17 @@ export async function POST(req: Request) {
     if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (!["student", "admin", "superadmin"].includes(session.role)) {
+
+    const supabase = createAdminClient();
+    const { data: currentUser, error: currentUserError } = await supabase
+        .from("users")
+        .select("role")
+        .eq("id", session.userId)
+        .maybeSingle();
+    if (currentUserError) {
+        return NextResponse.json({ error: "Request failed" }, { status: 500 });
+    }
+    if (!currentUser || !["student", "admin", "superadmin"].includes(currentUser.role)) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -81,7 +91,6 @@ export async function POST(req: Request) {
         uniform: uniform || DEFAULT_EVENT_UNIFORM,
     };
 
-    const supabase = createAdminClient();
     const { data: newEvent, error } = await supabase
         .from("events")
         .insert(eventData)

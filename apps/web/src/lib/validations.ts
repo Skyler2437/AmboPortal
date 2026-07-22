@@ -62,6 +62,40 @@ export const eventSchema = z.object({
   { message: "End time must be after start time", path: ["end_time"] }
 );
 
+/**
+ * Fields an event manager may change through the public event API.
+ * Server-managed columns (calendar IDs, ownership, reminders, timestamps)
+ * are intentionally absent and strict mode rejects attempts to smuggle them
+ * into an update.
+ */
+export const eventUpdateSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(1, "Title is required")
+    .max(200, "Title must be 200 characters or less")
+    .optional(),
+  start_time: z.string()
+    .refine((val) => !isNaN(new Date(val).getTime()), "Invalid start time")
+    .optional(),
+  end_time: z.string()
+    .refine((val) => !isNaN(new Date(val).getTime()), "Invalid end time")
+    .optional(),
+  description: z
+    .string()
+    .max(5000, "Description must be 5000 characters or less")
+    .nullable()
+    .optional(),
+  type: z.string().max(100, "Type must be 100 characters or less").optional(),
+  uniform: z.string().max(500, "Uniform must be 500 characters or less").optional(),
+  rsvp_options: z.array(
+    z.string().trim().min(1, "RSVP option cannot be blank").max(200, "RSVP option must be 200 characters or less"),
+  ).max(50, "An event can have at most 50 RSVP options").optional(),
+}).strict().refine(
+  (data) => Object.keys(data).length > 0,
+  { message: "At least one editable field is required" },
+);
+
 export const userCreateSchema = z.object({
   first_name: z
     .string()

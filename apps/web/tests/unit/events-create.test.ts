@@ -10,33 +10,51 @@ const { mockState, mockSupabaseClient } = vi.hoisted(() => {
     insertedPayload: Record<string, unknown> | null;
     insertError: { message: string } | null;
     eventInsertCount: number;
+    currentRole: "basic" | "student" | "admin" | "superadmin" | "applicant" | null;
+    currentRoleError: { message: string } | null;
   } = {
     session: { userId: "admin-1", role: "superadmin" },
     insertedPayload: null,
     insertError: null,
     eventInsertCount: 0,
+    currentRole: "superadmin",
+    currentRoleError: null,
   };
 
   const mockSupabaseClient = {
-    from: vi.fn((table: string) => ({
-      insert: vi.fn((payload: Record<string, unknown>) => {
-        if (table === "events") {
-          mockState.insertedPayload = payload;
-          mockState.eventInsertCount += 1;
-        }
+    from: vi.fn((table: string) => {
+      if (table === "users") {
         return {
           select: vi.fn(() => ({
-            single: vi.fn(async () => ({
-              data: mockState.insertError ? null : { id: "evt-1", ...payload },
-              error: mockState.insertError,
+            eq: vi.fn(() => ({
+              maybeSingle: vi.fn(async () => ({
+                data: mockState.currentRole ? { role: mockState.currentRole } : null,
+                error: mockState.currentRoleError,
+              })),
             })),
           })),
         };
-      }),
-      update: vi.fn(() => ({
-        eq: vi.fn(async () => ({ error: null })),
-      })),
-    })),
+      }
+      return {
+        insert: vi.fn((payload: Record<string, unknown>) => {
+          if (table === "events") {
+            mockState.insertedPayload = payload;
+            mockState.eventInsertCount += 1;
+          }
+          return {
+            select: vi.fn(() => ({
+              single: vi.fn(async () => ({
+                data: mockState.insertError ? null : { id: "evt-1", ...payload },
+                error: mockState.insertError,
+              })),
+            })),
+          };
+        }),
+        update: vi.fn(() => ({
+          eq: vi.fn(async () => ({ error: null })),
+        })),
+      };
+    }),
   };
 
   return { mockState, mockSupabaseClient };
@@ -79,6 +97,8 @@ describe("POST /api/events (create)", () => {
     mockState.insertedPayload = null;
     mockState.insertError = null;
     mockState.eventInsertCount = 0;
+    mockState.currentRole = "superadmin";
+    mockState.currentRoleError = null;
   });
 
   it.each([
@@ -87,6 +107,7 @@ describe("POST /api/events (create)", () => {
     ["superadmin", "superadmin-1"],
   ] as const)("immediately creates an event for an authenticated %s", async (role, userId) => {
     mockState.session = { userId, role };
+    mockState.currentRole = role;
 
     const res = await POST(makeCreateRequest(validBody));
 
@@ -104,6 +125,7 @@ describe("POST /api/events (create)", () => {
     [{ userId: "basic-1", role: "basic" } as const, 403, "Forbidden"],
   ])("rejects a non-creator session %# before inserting", async (session, status, error) => {
     mockState.session = session;
+    mockState.currentRole = session?.role ?? null;
 
     const res = await POST(makeCreateRequest(validBody));
 
@@ -114,6 +136,7 @@ describe("POST /api/events (create)", () => {
 
   it("binds created_by to the authenticated session instead of client input", async () => {
     mockState.session = { userId: "student-1", role: "student" };
+    mockState.currentRole = "student";
 
     const res = await POST(makeCreateRequest({
       ...validBody,
@@ -123,6 +146,16 @@ describe("POST /api/events (create)", () => {
     expect(res.status).toBe(200);
     expect(mockState.insertedPayload?.created_by).toBe("student-1");
     expect(mockState.insertedPayload?.created_by).not.toBe("attacker-selected-owner");
+  });
+
+  it("rejects a stale privileged cookie after the user is demoted in the database", async () => {
+    mockState.session = { userId: "former-admin", role: "superadmin" };
+    mockState.currentRole = "applicant";
+
+    const res = await POST(makeCreateRequest(validBody));
+
+    expect(res.status).toBe(403);
+    expect(mockState.eventInsertCount).toBe(0);
   });
 
   it("does not include a location key in the insert payload (column was dropped in 20260310_drop_events_location.sql)", async () => {

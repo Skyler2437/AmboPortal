@@ -289,10 +289,10 @@ describe("event security hardening migration", () => {
       "revoke insert, update on table public.events from public, anon, authenticated"
     );
     expect(normalizedStatements).toContain(
-      "grant insert (title, description, start_time, end_time, location, type, uniform, created_by) on public.events to authenticated"
+      "grant insert (title, description, start_time, end_time, type, uniform, created_by) on public.events to authenticated"
     );
     expect(normalizedStatements).toContain(
-      "grant update (title, description, start_time, end_time, location, type, uniform) on public.events to authenticated"
+      "grant update (title, description, start_time, end_time, type, uniform) on public.events to authenticated"
     );
 
     const eventWriteGrants = normalizedStatements.filter((statement) =>
@@ -364,7 +364,7 @@ describe("event security hardening migration", () => {
       /add constraint events_uniform_length_check\s+check \(uniform is null or char_length\(uniform\) <= 500\) not valid/
     );
     expect(sql).toMatch(
-      /add constraint events_time_order_check\s+check \(end_time >= start_time\) not valid/
+      /add constraint events_time_order_check\s+check \(end_time > start_time\) not valid/
     );
     expect(sql).not.toMatch(/validate constraint/i);
   });
