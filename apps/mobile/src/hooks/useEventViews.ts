@@ -16,7 +16,7 @@ function normalizeRelatedUsers(data: unknown[] | null): DialogUser[] {
 export async function loadPresentUsers(eventId: string): Promise<DialogUser[]> {
   const { data, error } = await supabase
     .from('event_attendance')
-    .select('users(id, first_name, last_name, avatar_url)')
+    .select('users:users!event_attendance_user_id_fkey(id, first_name, last_name, avatar_url)')
     .eq('event_id', eventId)
     .eq('status', 'present');
 
@@ -32,18 +32,24 @@ type ViewRequestOwner = {
 export function useEventViews(eventId: string, userId: string) {
   const generationRef = useRef(0);
   const committedOwnerRef = useRef<ViewRequestOwner | null>(null);
+  const countRequestSequenceRef = useRef(0);
   const [viewCountState, setViewCountState] = useState({ eventId, count: 0 });
   const recordedViewKeys = useRef(new Set<string>());
   const viewCount = viewCountState.eventId === eventId ? viewCountState.count : 0;
 
   const loadViewCount = useCallback(async (owner: ViewRequestOwner) => {
+    const requestSequence = countRequestSequenceRef.current + 1;
+    countRequestSequenceRef.current = requestSequence;
     const { count, error } = await supabase
       .from('event_views')
       .select('*', { count: 'exact', head: true })
       .eq('event_id', owner.eventId);
 
     if (error) throw error;
-    if (committedOwnerRef.current !== owner) return;
+    if (
+      committedOwnerRef.current !== owner
+      || countRequestSequenceRef.current !== requestSequence
+    ) return;
     setViewCountState({ eventId: owner.eventId, count: count ?? 0 });
   }, []);
 

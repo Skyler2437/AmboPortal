@@ -259,6 +259,41 @@ describe('useEventViews', () => {
     expect(result.current.viewCount).toBe(4);
   });
 
+  it('keeps the newest same-event count when the initial request resolves last', async () => {
+    const initialCount = deferred<{ data: null; count: number; error: null }>();
+    const upsert = vi.fn().mockResolvedValue({ data: null, error: null });
+    let countCall = 0;
+
+    mocks.from.mockImplementation((table: string) => {
+      if (table !== 'event_views') throw new Error(`Unexpected table: ${table}`);
+      return {
+        upsert,
+        select: () => ({
+          eq: () => {
+            countCall += 1;
+            return countCall === 1
+              ? initialCount.promise
+              : Promise.resolve({ data: null, count: 2, error: null });
+          },
+        }),
+      };
+    });
+
+    const { result } = renderRealHook(() => useEventViews('event-1', 'user-1'), {});
+
+    await act(async () => {
+      await result.current.recordView();
+    });
+    expect(result.current.viewCount).toBe(2);
+
+    await act(async () => {
+      initialCount.resolve({ data: null, count: 1, error: null });
+      await initialCount.promise;
+    });
+
+    expect(result.current.viewCount).toBe(2);
+  });
+
   it('upserts a detail viewer at most once per event and user', async () => {
     const upsert = vi.fn().mockResolvedValue({ data: null, error: null });
     mocks.from.mockImplementation(() => ({
@@ -339,7 +374,9 @@ describe('loadPresentUsers', () => {
       { id: 'user-3', first_name: 'Sam', last_name: 'Patel', avatar_url: undefined },
     ]);
     expect(mocks.from).toHaveBeenCalledWith('event_attendance');
-    expect(select).toHaveBeenCalledWith('users(id, first_name, last_name, avatar_url)');
+    expect(select).toHaveBeenCalledWith(
+      'users:users!event_attendance_user_id_fkey(id, first_name, last_name, avatar_url)',
+    );
     expect(eventEq).toHaveBeenCalledWith('event_id', 'event-1');
     expect(statusEq).toHaveBeenCalledWith('status', 'present');
   });
