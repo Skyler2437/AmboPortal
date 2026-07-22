@@ -6,9 +6,25 @@ const migrationPath = resolve(
   process.cwd(),
   "supabase/migrations/20260720_event_views_attendance.sql"
 );
+const correctiveMigrationPath = resolve(
+  process.cwd(),
+  "supabase/migrations/20260721170654_event_views_attendance_grants.sql"
+);
+
+function readSql(path: string): string {
+  return existsSync(path) ? readFileSync(path, "utf8") : "";
+}
 
 function readMigration(): string {
-  return existsSync(migrationPath) ? readFileSync(migrationPath, "utf8") : "";
+  return readSql(migrationPath);
+}
+
+function statements(sql: string): string[] {
+  return sql
+    .replace(/--.*$/gm, "")
+    .split(";")
+    .map((statement) => statement.trim().replace(/\s+/g, " "))
+    .filter(Boolean);
 }
 
 describe("event views and attendance migration", () => {
@@ -40,7 +56,13 @@ describe("event views and attendance migration", () => {
       "alter table public.event_views enable row level security"
     );
     expect(sql).toContain(
+      "revoke all on public.event_views from anon, authenticated"
+    );
+    expect(sql).toContain(
       "grant select, insert on public.event_views to authenticated"
+    );
+    expect(sql.indexOf("revoke all on public.event_views")).toBeLessThan(
+      sql.indexOf("grant select, insert on public.event_views")
     );
     expect(sql).toContain(
       "alter table public.event_attendance enable row level security"
@@ -66,10 +88,15 @@ describe("event views and attendance migration", () => {
       "u.role in ('admin', 'superadmin') or e.created_by = auth.uid()"
     );
     expect(sql).toContain(
-      "revoke all on function public.can_manage_event(uuid) from public"
+      "revoke execute on function public.can_manage_event(uuid) from public, anon, authenticated"
     );
     expect(sql).toContain(
       "grant execute on function public.can_manage_event(uuid) to authenticated"
+    );
+    expect(
+      sql.indexOf("revoke execute on function public.can_manage_event(uuid)")
+    ).toBeLessThan(
+      sql.indexOf("grant execute on function public.can_manage_event(uuid)")
     );
   });
 
@@ -121,10 +148,19 @@ describe("event views and attendance migration", () => {
       "raise exception 'Invalid attendance status' using errcode = '22023'"
     );
     expect(sql).toContain(
-      "revoke all on function public.save_event_attendance(uuid, jsonb) from public"
+      "revoke execute on function public.save_event_attendance(uuid, jsonb) from public, anon, authenticated"
     );
     expect(sql).toContain(
       "grant execute on function public.save_event_attendance(uuid, jsonb) to authenticated"
+    );
+    expect(
+      sql.indexOf(
+        "revoke execute on function public.save_event_attendance(uuid, jsonb)"
+      )
+    ).toBeLessThan(
+      sql.indexOf(
+        "grant execute on function public.save_event_attendance(uuid, jsonb)"
+      )
     );
   });
 
@@ -180,5 +216,20 @@ describe("event views and attendance migration", () => {
     expect(sql.match(/create policy posts_[\w]+ on public\.posts/g)).toHaveLength(
       1
     );
+  });
+});
+
+describe("event views and attendance corrective grants migration", () => {
+  it("contains only the exact revokes and grants required for existing objects", () => {
+    const sql = readSql(correctiveMigrationPath);
+
+    expect(statements(sql)).toEqual([
+      "revoke all on public.event_views from anon, authenticated",
+      "grant select, insert on public.event_views to authenticated",
+      "revoke execute on function public.can_manage_event(uuid) from public, anon, authenticated",
+      "grant execute on function public.can_manage_event(uuid) to authenticated",
+      "revoke execute on function public.save_event_attendance(uuid, jsonb) from public, anon, authenticated",
+      "grant execute on function public.save_event_attendance(uuid, jsonb) to authenticated",
+    ]);
   });
 });

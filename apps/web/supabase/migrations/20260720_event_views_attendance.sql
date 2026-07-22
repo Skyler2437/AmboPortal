@@ -8,6 +8,7 @@ create table if not exists public.event_views (
 create index if not exists idx_event_views_event_id on public.event_views(event_id);
 create index if not exists idx_event_views_user_id on public.event_views(user_id);
 alter table public.event_views enable row level security;
+revoke all on public.event_views from anon, authenticated;
 grant select, insert on public.event_views to authenticated;
 
 create table if not exists public.event_attendance (
@@ -38,7 +39,7 @@ as $$
       and (u.role in ('admin', 'superadmin') or e.created_by = auth.uid())
   );
 $$;
-revoke all on function public.can_manage_event(uuid) from public;
+revoke execute on function public.can_manage_event(uuid) from public, anon, authenticated;
 grant execute on function public.can_manage_event(uuid) to authenticated;
 
 drop policy if exists event_views_select_authenticated on public.event_views;
@@ -123,7 +124,7 @@ begin
   end loop;
 end;
 $$;
-revoke all on function public.save_event_attendance(uuid, jsonb) from public;
+revoke execute on function public.save_event_attendance(uuid, jsonb) from public, anon, authenticated;
 grant execute on function public.save_event_attendance(uuid, jsonb) to authenticated;
 
 drop policy if exists "Admins can insert events" on public.events;
