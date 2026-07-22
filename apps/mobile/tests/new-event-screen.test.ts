@@ -117,6 +117,19 @@ describe('NewEventScreen creation', () => {
     }));
   });
 
+  it('lets description and uniform fields expand for longer text', async () => {
+    const renderer = await renderScreen();
+
+    expect(findFormField(renderer, 'Description').props).toEqual(expect.objectContaining({
+      multiline: true,
+      scrollEnabled: false,
+    }));
+    expect(findFormField(renderer, 'Uniform').props).toEqual(expect.objectContaining({
+      multiline: true,
+      scrollEnabled: false,
+    }));
+  });
+
   it('retains the form and does not navigate when the event insert fails', async () => {
     creationState.eventResult = { data: null, error: { message: 'permission denied' } };
     const renderer = await renderScreen();

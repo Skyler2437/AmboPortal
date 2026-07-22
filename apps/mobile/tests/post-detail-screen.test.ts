@@ -17,7 +17,7 @@ vi.mock('@/hooks/usePosts', () => ({
     posts: [{
       id: 'event-1',
       user_id: 'user-1',
-      content: 'A mounted post for composer testing.',
+      content: 'A mounted post with https://example.com/student-details',
       created_at: '2026-07-21T12:00:00.000Z',
       users: {
         first_name: 'Demo',
@@ -80,9 +80,13 @@ async function renderScreen() {
   let renderer!: ReactTestRenderer;
   await act(async () => {
     renderer = create(React.createElement(PostDetailScreen, { role: 'student' }), {
-      createNodeMock: (element) => (
-        element.props.accessibilityLabel === 'Comment' ? { focus: mocks.inputFocus } : {}
-      ),
+      createNodeMock: (element) => {
+        if (element.props.accessibilityLabel === 'Comment') return { focus: mocks.inputFocus };
+        if (element.props.testID === 'post-content-scroll') {
+          return { scrollToEnd: mocks.scrollToEnd };
+        }
+        return {};
+      },
     });
   });
   mountedRenderers.push(renderer);
@@ -94,6 +98,7 @@ beforeEach(() => {
   mocks.auth.session.user.id = 'user-1';
   mocks.auth.userRole = 'student';
   mocks.inputFocus.mockReset();
+  mocks.scrollToEnd.mockReset();
   postMocks.createComment.mockReset();
   postMocks.editComment.mockReset();
   postMocks.deleteComment.mockReset();
@@ -186,5 +191,36 @@ describe('PostDetailScreen comment composer', () => {
     expect(AccessibilityInfo.announceForAccessibility).toHaveBeenCalledWith(
       'Failed to post comment.',
     );
+  });
+
+  it('scrolls to the newest comment when the composer receives focus', async () => {
+    const renderer = await renderScreen();
+
+    act(() => findByLabel(renderer, 'Comment').props.onFocus?.());
+
+    expect(mocks.scrollToEnd).toHaveBeenCalledWith({ animated: true });
+  });
+
+  it('matches the outlined event edit and delete controls', async () => {
+    const renderer = await renderScreen();
+
+    expect(findByLabel(renderer, 'Edit post').props).toEqual(expect.objectContaining({
+      icon: 'pencil',
+      mode: 'outlined',
+      size: 20,
+    }));
+    expect(findByLabel(renderer, 'Delete post').props).toEqual(expect.objectContaining({
+      icon: 'delete',
+      mode: 'outlined',
+      size: 20,
+    }));
+  });
+
+  it('lets people open web links in post content', async () => {
+    const renderer = await renderScreen();
+
+    const link = findByLabel(renderer, 'Open link https://example.com/student-details');
+    expect(link.props.accessibilityRole).toBe('link');
+    expect(link.props.onPress).toEqual(expect.any(Function));
   });
 });

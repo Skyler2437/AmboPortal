@@ -131,8 +131,18 @@ export function NewEventScreen({ role }: { role: AppRole }) {
           onChangeText={setDescription}
           multiline
           numberOfLines={4}
+          scrollEnabled={false}
+          style={styles.descriptionInput}
         />
-        <FormField label="Uniform" value={uniform} onChangeText={setUniform} />
+        <FormField
+          label="Uniform"
+          value={uniform}
+          onChangeText={setUniform}
+          multiline
+          numberOfLines={2}
+          scrollEnabled={false}
+          style={styles.uniformInput}
+        />
 
         <Text variant="labelMedium" style={[styles.dateLabel, labelColor]}>Date & Time</Text>
         <EventDateTimePicker
@@ -208,5 +218,7 @@ const makeStyles = (t: SemanticTokens) =>
     rsvpOptionRow: { flexDirection: 'row', alignItems: 'center', marginBottom: space.xs },
     rsvpOptionInput: { flex: 1, backgroundColor: t.surface },
     addOptionButton: { alignSelf: 'flex-start', marginBottom: space.sm },
+    descriptionInput: { minHeight: 112, textAlignVertical: 'top' },
+    uniformInput: { minHeight: 72, textAlignVertical: 'top' },
     createButton: { borderRadius: radius.sm, marginTop: space.sm },
   });

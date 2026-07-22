@@ -29,6 +29,7 @@ import { LoadingScreen } from '@/components/LoadingScreen';
 import { PostAttachments } from '@/components/PostAttachments';
 import { UserListDialog, DialogUser } from '@/components/UserListDialog';
 import { ComposerInput } from '@/components/ComposerInput';
+import { LinkifiedText } from '@/components/LinkifiedText';
 import { supabase } from '@/lib/supabase';
 import { getInitials } from '@/lib/format';
 import { sendDraft } from '@/lib/composer-state';
@@ -97,6 +98,8 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
   const [commentText, setCommentText] = useState('');
   const [posting, setPosting] = useState(false);
   const commentInputRef = useRef<RNTextInput>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const commentComposerFocusedRef = useRef(false);
   const commentTextRef = useRef('');
   const commentPostInFlightRef = useRef(false);
 
@@ -238,6 +241,10 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
 
   const keyboardOffset = Platform.OS === 'ios' ? insets.top + 44 : 0;
 
+  const scrollToNewestComment = () => {
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+  };
+
   return (
     <>
       <Stack.Screen options={{ title: 'Post' }} />
@@ -247,9 +254,14 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
         keyboardVerticalOffset={keyboardOffset}
       >
         <ScrollView
+          ref={scrollViewRef}
+          testID="post-content-scroll"
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
+          onContentSizeChange={() => {
+            if (commentComposerFocusedRef.current) scrollToNewestComment();
+          }}
         >
           {/* Author header */}
           <View style={styles.header}>
@@ -275,7 +287,9 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
           {showActions && (
             <View style={styles.adminActions}>
               <IconButton
-                icon={editing ? 'close' : 'pencil-outline'}
+                icon={editing ? 'close' : 'pencil'}
+                mode="outlined"
+                size={20}
                 accessibilityLabel={editing ? 'Cancel editing post' : 'Edit post'}
                 onPress={() => {
                   setEditing(!editing);
@@ -283,7 +297,9 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
                 }}
               />
               <IconButton
-                icon="delete-outline"
+                icon="delete"
+                mode="outlined"
+                size={20}
                 iconColor={tokens.statusBadFg}
                 accessibilityLabel="Delete post"
                 onPress={handleDelete}
@@ -318,9 +334,9 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
             </View>
           ) : (
             <>
-              <Text variant="bodyMedium" style={styles.content}>
+              <LinkifiedText variant="bodyMedium" style={styles.content}>
                 {post.content}
-              </Text>
+              </LinkifiedText>
               <PostAttachments attachments={post.attachments} variant="full" />
             </>
           )}
@@ -421,7 +437,7 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
                         </View>
                       </View>
                     ) : (
-                      <Text variant="bodyMedium" style={{ fontSize: fontSize.md }}>{comment.content}</Text>
+                      <LinkifiedText variant="bodyMedium" style={{ fontSize: fontSize.md }}>{comment.content}</LinkifiedText>
                     )}
                   </View>
                   {canActOnComment && !isEditingThis && (
@@ -460,6 +476,13 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
           sending={posting}
           accessibilityLabel="Comment"
           sendAccessibilityLabel="Post comment"
+          onFocus={() => {
+            commentComposerFocusedRef.current = true;
+            scrollToNewestComment();
+          }}
+          onBlur={() => {
+            commentComposerFocusedRef.current = false;
+          }}
         />
       </KeyboardAvoidingView>
       <UserListDialog visible={likesOpen} title={`Liked by ${post.like_count}`} users={likers} onDismiss={() => setLikesOpen(false)} />

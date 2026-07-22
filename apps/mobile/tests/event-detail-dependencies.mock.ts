@@ -34,6 +34,7 @@ export const mockState = {
   routerPush: vi.fn(),
   routerBack: vi.fn(),
   inputFocus: vi.fn(),
+  scrollToEnd: vi.fn(),
   supabaseFrom: vi.fn(),
   detail: {
     comments: [] as unknown[],
@@ -76,6 +77,7 @@ export const supabase = {
 };
 
 export const createChatGroup = vi.fn();
+export const openExternalLink = vi.fn();
 
 export const space = { xxs: 2, xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 export const radius = { sm: 8, md: 12, lg: 16, pill: 999 } as const;

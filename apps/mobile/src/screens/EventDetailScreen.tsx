@@ -31,6 +31,7 @@ import { LoadingScreen } from '@/components/LoadingScreen';
 import { EventDateTimePicker } from '@/components/EventDateTimePicker';
 import { UserListDialog, type DialogUser } from '@/components/UserListDialog';
 import { ComposerInput } from '@/components/ComposerInput';
+import { LinkifiedText } from '@/components/LinkifiedText';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { getInitials } from '@/lib/format';
 import { canManageEvent } from '@/lib/event-attendance';
@@ -154,6 +155,8 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const [commentText, setCommentText] = useState('');
   const [posting, setPosting] = useState(false);
   const commentInputRef = useRef<RNTextInput>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const commentComposerFocusedRef = useRef(false);
   const commentTextRef = useRef('');
   const commentPostInFlightRef = useRef(false);
   const [editing, setEditing] = useState(false);
@@ -486,6 +489,10 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
 
   const keyboardOffset = Platform.OS === 'ios' ? insets.top + 44 : 0;
 
+  const scrollToNewestComment = () => {
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+  };
+
   const commentInput = (
     <ComposerInput
       ref={commentInputRef}
@@ -499,6 +506,13 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
       sending={posting}
       accessibilityLabel="Comment"
       sendAccessibilityLabel="Post comment"
+      onFocus={() => {
+        commentComposerFocusedRef.current = true;
+        scrollToNewestComment();
+      }}
+      onBlur={() => {
+        commentComposerFocusedRef.current = false;
+      }}
     />
   );
 
@@ -511,64 +525,72 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
         keyboardVerticalOffset={isAdmin ? keyboardOffset : 100}
       >
         <ScrollView
+          ref={scrollViewRef}
+          testID="event-content-scroll"
           contentContainerStyle={isAdmin ? styles.contentAdmin : styles.contentStudent}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={isAdmin ? 'interactive' : undefined}
+          onContentSizeChange={() => {
+            if (commentComposerFocusedRef.current) scrollToNewestComment();
+          }}
         >
           {/* Actions */}
           <View style={isAdmin ? styles.adminActions : styles.actionRow}>
             {canManage && (
-              <>
-                <IconButton
-                  icon={editing ? 'close' : 'pencil'}
-                  mode="outlined"
-                  size={20}
-                  onPress={() => setEditing(!editing)}
-                  accessibilityLabel={editing ? 'Cancel editing' : 'Edit event'}
-                />
-                <IconButton
-                  icon="delete"
-                  mode="outlined"
-                  size={20}
-                  iconColor={tokens.statusBadFg}
-                  onPress={handleDelete}
-                  accessibilityLabel="Delete event"
-                />
-                <Button
-                  mode="outlined"
-                  icon="clipboard-check-outline"
-                  compact
-                  onPress={() => router.push(
-                    `/(${role})/events/attendance/${id}` as Parameters<typeof router.push>[0],
-                  )}
-                  accessibilityLabel="Take attendance for this event"
-                  style={styles.attendanceButton}
-                >
-                  Take Attendance
-                </Button>
-              </>
-            )}
-            {isAdmin && <View style={styles.actionSpacer} />}
-            <IconButton
-              icon="chat-plus-outline"
-              mode="outlined"
-              size={20}
-              onPress={handleCreateAttendeeChat}
-              loading={creatingChat}
-              disabled={creatingChat}
-              accessibilityLabel="Create chat with attendees"
-            />
-            {isAdmin && (
               <IconButton
-                icon="bell-ring-outline"
+                icon="clipboard-check-outline"
                 mode="outlined"
                 size={20}
-                onPress={handleSendReminder}
-                loading={sendingReminder}
-                disabled={sendingReminder}
-                accessibilityLabel="Send event reminder"
+                iconColor={tokens.accent}
+                onPress={() => router.push(
+                  `/(${role})/events/attendance/${id}` as Parameters<typeof router.push>[0],
+                )}
+                accessibilityLabel="Take attendance for this event"
+                style={styles.attendanceButton}
               />
             )}
+            <View style={styles.actionSpacer} />
+            <View style={styles.utilityActions}>
+              {canManage && (
+                <>
+                  <IconButton
+                    icon={editing ? 'close' : 'pencil'}
+                    mode="outlined"
+                    size={20}
+                    onPress={() => setEditing(!editing)}
+                    accessibilityLabel={editing ? 'Cancel editing' : 'Edit event'}
+                  />
+                  <IconButton
+                    icon="delete"
+                    mode="outlined"
+                    size={20}
+                    iconColor={tokens.statusBadFg}
+                    onPress={handleDelete}
+                    accessibilityLabel="Delete event"
+                  />
+                </>
+              )}
+              <IconButton
+                icon="chat-plus-outline"
+                mode="outlined"
+                size={20}
+                onPress={handleCreateAttendeeChat}
+                loading={creatingChat}
+                disabled={creatingChat}
+                accessibilityLabel="Create chat with attendees"
+              />
+              {isAdmin && (
+                <IconButton
+                  icon="bell-ring-outline"
+                  mode="outlined"
+                  size={20}
+                  onPress={handleSendReminder}
+                  loading={sendingReminder}
+                  disabled={sendingReminder}
+                  accessibilityLabel="Send event reminder"
+                />
+              )}
+            </View>
           </View>
 
           {/* Event Info or Edit Form (managers only) */}
@@ -588,17 +610,21 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 value={editDescription}
                 onChangeText={setEditDescription}
                 multiline
-                numberOfLines={3}
+                numberOfLines={4}
+                scrollEnabled={false}
                 dense
-                style={styles.editInput}
+                style={[styles.editInput, styles.descriptionInput]}
               />
               <TextInput
                 mode="outlined"
                 label="Uniform"
                 value={editUniform}
                 onChangeText={setEditUniform}
+                multiline
+                numberOfLines={2}
+                scrollEnabled={false}
                 dense
-                style={styles.editInput}
+                style={[styles.editInput, styles.uniformInput]}
                 placeholder="e.g. Ambassador Polo with Navy Pants"
               />
               <EventDateTimePicker
@@ -635,7 +661,12 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 <Card elevation={0} style={styles.uniformCard}>
                   <Card.Content style={styles.uniformContent}>
                     <MaterialCommunityIcons name="tshirt-crew-outline" size={18} color={uniformIconColor} />
-                    <Text variant="bodyMedium" style={styles.uniformText}>Uniform: {event.uniform}</Text>
+                    <LinkifiedText
+                      variant="bodyMedium"
+                      style={styles.uniformText}
+                    >
+                      {`Uniform: ${event.uniform}`}
+                    </LinkifiedText>
                   </Card.Content>
                 </Card>
               )}
@@ -643,7 +674,7 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
               {event.description && (
                 <>
                   <Divider style={styles.divider} />
-                  <Text variant="bodyMedium" style={styles.description}>{event.description}</Text>
+                  <LinkifiedText variant="bodyMedium" style={styles.description}>{event.description}</LinkifiedText>
                 </>
               )}
             </>
@@ -824,7 +855,7 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 <Text variant="bodySmall" style={styles.commentAuthor}>
                   {comment.users.first_name} {comment.users.last_name}
                 </Text>
-                <Text variant="bodyMedium">{comment.content}</Text>
+                <LinkifiedText variant="bodyMedium">{comment.content}</LinkifiedText>
                 <Text variant="labelSmall" style={styles.commentTime}>
                   {new Date(comment.created_at).toLocaleDateString()}
                 </Text>
@@ -870,10 +901,13 @@ const makeStyles = (t: SemanticTokens) => StyleSheet.create({
   contentStudent: { padding: space.lg, paddingBottom: space.xxl },
   adminActions: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.lg },
   actionSpacer: { flex: 1 },
-  actionRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: space.xs, marginBottom: space.xs },
-  attendanceButton: { borderRadius: radius.md },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs, marginBottom: space.xs },
+  utilityActions: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  attendanceButton: { borderColor: t.accent },
   editSection: { gap: space.md, marginBottom: space.sm },
   editInput: { backgroundColor: t.surface },
+  descriptionInput: { minHeight: 112, textAlignVertical: 'top' },
+  uniformInput: { minHeight: 72, textAlignVertical: 'top' },
   saveButton: { borderRadius: radius.md, marginTop: space.xs },
   title: { fontWeight: fontWeight.bold, marginBottom: space.md },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.sm },

@@ -27,6 +27,7 @@ export default defineConfig({
       '@/hooks/useEventViews': path.resolve(__dirname, './tests/event-detail-dependencies.mock.ts'),
       '@/lib/supabase': path.resolve(__dirname, './tests/event-detail-dependencies.mock.ts'),
       '@/lib/chat': path.resolve(__dirname, './tests/event-detail-dependencies.mock.ts'),
+      '@/lib/openExternalLink': path.resolve(__dirname, './tests/event-detail-dependencies.mock.ts'),
       '@/lib/theme': path.resolve(__dirname, './tests/event-detail-dependencies.mock.ts'),
       '@/components/LoadingScreen': path.resolve(__dirname, './tests/event-detail-dependencies.mock.ts'),
       '@/components/EventDateTimePicker': path.resolve(__dirname, './tests/event-detail-dependencies.mock.ts'),

@@ -55,9 +55,13 @@ async function renderScreen(role: 'student' | 'admin' = 'student') {
   let renderer!: ReactTestRenderer;
   await act(async () => {
     renderer = create(React.createElement(EventDetailScreen, { role }), {
-      createNodeMock: (element) => (
-        element.props.accessibilityLabel === 'Comment' ? { focus: mocks.inputFocus } : {}
-      ),
+      createNodeMock: (element) => {
+        if (element.props.accessibilityLabel === 'Comment') return { focus: mocks.inputFocus };
+        if (element.props.testID === 'event-content-scroll') {
+          return { scrollToEnd: mocks.scrollToEnd };
+        }
+        return {};
+      },
     });
     await Promise.resolve();
     await Promise.resolve();
@@ -108,6 +112,7 @@ beforeEach(() => {
   mocks.routerPush.mockReset();
   mocks.routerBack.mockReset();
   mocks.inputFocus.mockReset();
+  mocks.scrollToEnd.mockReset();
   mocks.detail.postComment.mockReset();
   mocks.detail.postComment.mockResolvedValue(null);
   vi.mocked(AccessibilityInfo.announceForAccessibility).mockReset();
@@ -457,6 +462,22 @@ describe('EventDetailScreen engagement behavior', () => {
     expect(findByLabel(renderer, 'Edit event')).toBeDefined();
     expect(findByLabel(renderer, 'Delete event')).toBeDefined();
     const attendance = findByLabel(renderer, 'Take attendance for this event');
+    expect(attendance.type).toBe('IconButton');
+    expect(attendance.props).toEqual(expect.objectContaining({
+      icon: 'clipboard-check-outline',
+      mode: 'outlined',
+      size: 20,
+      iconColor: '#005eff',
+    }));
+    const managerActions = renderer.root.findAll((node) => (
+      ['Take attendance for this event', 'Edit event', 'Delete event']
+        .includes(node.props.accessibilityLabel)
+    ));
+    expect(managerActions.map((node) => node.props.accessibilityLabel)).toEqual([
+      'Take attendance for this event',
+      'Edit event',
+      'Delete event',
+    ]);
     act(() => attendance.props.onPress());
 
     expect(mocks.routerPush).toHaveBeenCalledWith('/(student)/events/attendance/event-1');
@@ -480,6 +501,50 @@ describe('EventDetailScreen engagement behavior', () => {
 
     expect(findByLabel(adminRenderer, 'Edit event')).toBeDefined();
     expect(findByLabel(adminRenderer, 'Take attendance for this event')).toBeDefined();
+  });
+
+  it('scrolls to the newest comment when the composer receives focus', async () => {
+    const renderer = await renderScreen();
+
+    act(() => findByLabel(renderer, 'Comment').props.onFocus?.());
+
+    expect(mocks.scrollToEnd).toHaveBeenCalledWith({ animated: true });
+  });
+
+  it('lets people open web links in event descriptions', async () => {
+    mocks.eventRequests.set('event-1', Promise.resolve({
+      data: {
+        ...testEvent('event-1'),
+        description: 'Details: https://example.com/event-info',
+      },
+      error: null,
+    }));
+    const renderer = await renderScreen();
+
+    const link = findByLabel(renderer, 'Open link https://example.com/event-info');
+    expect(link.props.accessibilityRole).toBe('link');
+    expect(link.props.onPress).toEqual(expect.any(Function));
+  });
+
+  it('uses expanding multiline fields for event description and uniform edits', async () => {
+    mocks.eventRequests.set('event-1', Promise.resolve({
+      data: testEvent('event-1', 'user-1'),
+      error: null,
+    }));
+    const renderer = await renderScreen();
+
+    act(() => findByLabel(renderer, 'Edit event').props.onPress());
+    const description = renderer.root.find((node) => node.props.label === 'Description');
+    const uniform = renderer.root.find((node) => node.props.label === 'Uniform');
+
+    expect(description.props).toEqual(expect.objectContaining({
+      multiline: true,
+      scrollEnabled: false,
+    }));
+    expect(uniform.props).toEqual(expect.objectContaining({
+      multiline: true,
+      scrollEnabled: false,
+    }));
   });
 });
 
