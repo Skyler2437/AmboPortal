@@ -236,8 +236,8 @@ export function EventModal({
 
     // --- RSVP Logic ---
 
-    const handleRsvp = async (status: string, rsvpOptionId?: string) => {
-        if (loadingRsvp) return;
+    const handleRsvp = async (status: string, rsvpOptionId?: string, explanation?: string) => {
+        if (loadingRsvp) return false;
         setLoadingRsvp(true);
 
         try {
@@ -248,20 +248,25 @@ export function EventModal({
                     event_id: event.id,
                     status,
                     ...(rsvpOptionId && { rsvp_option_id: rsvpOptionId }),
+                    ...(explanation !== undefined && { explanation }),
                 }),
             });
 
             if (res.ok) {
-                const data = await res.json();
-                setRsvps(data.rsvps || []);
+                await fetchData();
+                onEventChanged?.();
+                return true;
             } else {
-                toast.error("Failed to update RSVP");
+                const data = await res.json().catch(() => ({}));
+                toast.error(data.error || "Failed to update RSVP");
             }
         } catch (e) {
             console.error("Failed to update RSVP", e);
             toast.error("Failed to update RSVP");
+        } finally {
+            setLoadingRsvp(false);
         }
-        setLoadingRsvp(false);
+        return false;
     };
 
     // --- Event Logic ---
@@ -471,6 +476,7 @@ export function EventModal({
                         going={going}
                         maybe={maybe}
                         rsvpButtons={rsvpButtons}
+                        canViewExplanations={isAdmin || isSuperAdmin}
                         onRsvp={handleRsvp}
                     />
 

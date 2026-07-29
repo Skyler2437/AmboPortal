@@ -24,6 +24,7 @@ export async function GET() {
     { data: posts },
     { data: comments },
     { data: eventRsvps },
+    { data: eventRsvpExplanations },
     { data: eventComments },
     { data: chatMessages },
     { data: chatGroups },
@@ -53,6 +54,10 @@ export async function GET() {
       .select("event_id, status, created_at")
       .eq("user_id", userId),
     supabase
+      .from("event_rsvp_explanations")
+      .select("event_id, explanation, updated_at")
+      .eq("user_id", userId),
+    supabase
       .from("event_comments")
       .select("id, event_id, content, created_at")
       .eq("user_id", userId)
@@ -75,6 +80,7 @@ export async function GET() {
     posts: posts || [],
     comments: comments || [],
     event_rsvps: eventRsvps || [],
+    event_rsvp_explanations: eventRsvpExplanations || [],
     event_comments: eventComments || [],
     chat_messages: chatMessages || [],
     chat_groups: chatGroups || [],

@@ -17,6 +17,17 @@ export const StyleSheet = {
   flatten: (style: unknown) => style,
 };
 
+export function Modal({
+  visible,
+  children,
+  ...props
+}: {
+  visible: boolean;
+  children?: React.ReactNode;
+}) {
+  return visible ? React.createElement('Modal', props, children) : null;
+}
+
 export const mockState = {
   routeId: 'event-1',
   auth: {
@@ -42,6 +53,7 @@ export const mockState = {
     rsvpOptions: [] as unknown[],
     myRsvp: null,
     myRsvpOptionId: null,
+    myRsvpExplanation: null,
     loading: false,
     updateRsvp: vi.fn(),
     postComment: vi.fn(),

@@ -27,6 +27,33 @@ export async function GET(req: NextRequest) {
         .select("status, user_id, rsvp_option_id, users(first_name, last_name, avatar_url)")
         .eq("event_id", eventId);
 
+    // Explanations are stored separately from the generally visible RSVP
+    // roster. Re-check the live database role so a stale admin cookie cannot
+    // expose other students' private explanations.
+    const { data: currentUser } = await supabase
+        .from("users")
+        .select("role")
+        .eq("id", session.userId)
+        .maybeSingle();
+    const canViewAllExplanations = currentUser?.role === "admin"
+        || currentUser?.role === "superadmin";
+
+    let explanationsQuery = supabase
+        .from("event_rsvp_explanations")
+        .select("user_id, explanation")
+        .eq("event_id", eventId);
+    if (!canViewAllExplanations) {
+        explanationsQuery = explanationsQuery.eq("user_id", session.userId);
+    }
+    const { data: explanations } = await explanationsQuery;
+    const explanationByUser = new Map(
+        (explanations || []).map((row) => [row.user_id, row.explanation]),
+    );
+    const rsvpsWithVisibleExplanations = (rsvps || []).map((rsvp) => {
+        const explanation = explanationByUser.get(rsvp.user_id);
+        return explanation ? { ...rsvp, explanation } : rsvp;
+    });
+
     const { data: rsvpOptions } = await supabase
         .from("event_rsvp_options")
         .select("*")
@@ -41,7 +68,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
         comments: comments || [],
-        rsvps: rsvps || [],
+        rsvps: rsvpsWithVisibleExplanations,
         rsvp_options: rsvpOptions || [],
         attachments: attachments || [],
     });

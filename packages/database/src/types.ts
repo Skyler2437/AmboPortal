@@ -60,6 +60,7 @@ export interface EventRSVP {
   user_id: string;
   rsvp_option_id?: string;
   rsvp_option?: EventRSVPOption;
+  explanation?: string;
 }
 
 export interface EventAttendance {

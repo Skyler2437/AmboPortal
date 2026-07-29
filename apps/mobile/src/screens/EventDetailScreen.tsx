@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Alert,
   Pressable,
@@ -85,13 +86,16 @@ interface RsvpButtonProps {
   // student screens historically differed here (textPrimary vs textSecondary),
   // so it's parameterized to preserve each role's exact appearance.
   unselectedColor: string;
+  accessibilityLabel: string;
 }
 
-function RsvpButton({ label, icon, selected, color, bgColor, borderColor, count, onPress, unselectedColor }: RsvpButtonProps) {
+function RsvpButton({ label, icon, selected, color, bgColor, borderColor, count, onPress, unselectedColor, accessibilityLabel }: RsvpButtonProps) {
   const { styles, tokens } = useThemedStyles(makeStyles);
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       style={[
         styles.rsvpBtn,
         { borderColor: selected ? borderColor : tokens.border, backgroundColor: selected ? bgColor : tokens.surface },
@@ -154,6 +158,9 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const [eventLoading, setEventLoading] = useState(true);
   const [commentText, setCommentText] = useState('');
   const [posting, setPosting] = useState(false);
+  const [rsvpExplanationStatus, setRsvpExplanationStatus] = useState<'maybe' | 'no' | null>(null);
+  const [rsvpExplanation, setRsvpExplanation] = useState('');
+  const [savingRsvp, setSavingRsvp] = useState(false);
   const commentInputRef = useRef<RNTextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const commentComposerFocusedRef = useRef(false);
@@ -180,7 +187,17 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const [editAllDay, setEditAllDay] = useState(false);
 
   const insets = useSafeAreaInsets();
-  const { comments, rsvps, rsvpOptions, myRsvp, myRsvpOptionId, loading, updateRsvp, postComment } = useEventDetail(id, userId);
+  const {
+    comments,
+    rsvps,
+    rsvpOptions,
+    myRsvp,
+    myRsvpOptionId,
+    myRsvpExplanation,
+    loading,
+    updateRsvp,
+    postComment,
+  } = useEventDetail(id, userId);
   const { viewCount, recordView, loadViewers } = useEventViews(id, userId);
 
   useEffect(() => {
@@ -202,6 +219,46 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
       }
     };
   }, [id]);
+
+  useEffect(() => {
+    setRsvpExplanationStatus(null);
+    setRsvpExplanation('');
+    setSavingRsvp(false);
+  }, [id]);
+
+  const openRsvpExplanation = (status: 'maybe' | 'no') => {
+    setRsvpExplanationStatus(status);
+    setRsvpExplanation(myRsvp === status ? myRsvpExplanation || '' : '');
+  };
+
+  const saveRsvpExplanation = async () => {
+    if (!rsvpExplanationStatus) return;
+    const cleanExplanation = rsvpExplanation.trim();
+    if (cleanExplanation.length < 50 || cleanExplanation.length > 500) return;
+
+    setSavingRsvp(true);
+    const error = await updateRsvp(
+      rsvpExplanationStatus as RSVPStatus,
+      undefined,
+      cleanExplanation,
+    );
+    setSavingRsvp(false);
+
+    if (error) {
+      Alert.alert('Error', error.message || 'Failed to update RSVP');
+      AccessibilityInfo.announceForAccessibility('Failed to update RSVP.');
+      return;
+    }
+
+    setRsvpExplanationStatus(null);
+    setRsvpExplanation('');
+  };
+
+  const dismissRsvpExplanation = () => {
+    if (savingRsvp) return;
+    setRsvpExplanationStatus(null);
+    setRsvpExplanation('');
+  };
 
   useEffect(() => {
     let active = true;
@@ -711,8 +768,9 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                   bgColor={tokens.statusWarnBg}
                   borderColor={tokens.statusWarnBorder}
                   count={maybeCount}
-                  onPress={() => updateRsvp('maybe' as RSVPStatus)}
+                  onPress={() => openRsvpExplanation('maybe')}
                   unselectedColor={rsvpUnselectedColor}
+                  accessibilityLabel="Choose Maybe RSVP"
                 />
                 <RsvpButton
                   label="Can't Go"
@@ -721,8 +779,9 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                   color={tokens.textMuted}
                   bgColor={tokens.surfaceVariant}
                   borderColor={tokens.border}
-                  onPress={() => updateRsvp('no' as RSVPStatus)}
+                  onPress={() => openRsvpExplanation('no')}
                   unselectedColor={rsvpUnselectedColor}
+                  accessibilityLabel="Choose Can't Go RSVP"
                 />
               </View>
             </View>
@@ -739,6 +798,7 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 count={goingCount}
                 onPress={() => updateRsvp('going' as RSVPStatus)}
                 unselectedColor={rsvpUnselectedColor}
+                accessibilityLabel="Choose Going RSVP"
               />
               <RsvpButton
                 label="Maybe"
@@ -748,8 +808,9 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 bgColor={tokens.statusWarnBg}
                 borderColor={tokens.statusWarnBorder}
                 count={maybeCount}
-                onPress={() => updateRsvp('maybe' as RSVPStatus)}
+                onPress={() => openRsvpExplanation('maybe')}
                 unselectedColor={rsvpUnselectedColor}
+                accessibilityLabel="Choose Maybe RSVP"
               />
               <RsvpButton
                 label="Can't Go"
@@ -758,8 +819,9 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 color={tokens.textMuted}
                 bgColor={tokens.surfaceVariant}
                 borderColor={tokens.border}
-                onPress={() => updateRsvp('no' as RSVPStatus)}
+                onPress={() => openRsvpExplanation('no')}
                 unselectedColor={rsvpUnselectedColor}
+                accessibilityLabel="Choose Can't Go RSVP"
               />
             </View>
           )}
@@ -836,6 +898,30 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
             </View>
           )}
 
+          {isAdmin && rsvps.some((rsvp) => (
+            (rsvp.status === 'maybe' || rsvp.status === 'no') && rsvp.explanation
+          )) && (
+            <View style={styles.explanationsSection}>
+              <Text variant="titleSmall" style={styles.explanationsTitle}>RSVP explanations</Text>
+              {rsvps
+                .filter((rsvp) => (
+                  (rsvp.status === 'maybe' || rsvp.status === 'no')
+                  && rsvp.explanation
+                  && rsvp.users
+                ))
+                .map((rsvp) => (
+                  <View key={rsvp.user_id} style={styles.explanationCard}>
+                    <Text variant="bodySmall" style={styles.explanationAuthor}>
+                      {rsvp.users.first_name} {rsvp.users.last_name} · {rsvp.status === 'maybe' ? 'Maybe' : "Can't Go"}
+                    </Text>
+                    <Text variant="bodyMedium" style={styles.explanationText}>
+                      {rsvp.explanation}
+                    </Text>
+                  </View>
+                ))}
+            </View>
+          )}
+
           {/* Comments */}
           <Divider style={styles.divider} />
           <Text variant="titleMedium" style={styles.sectionTitle}>
@@ -865,6 +951,75 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
 
         {commentInput}
       </KeyboardAvoidingView>
+      <Modal
+        visible={rsvpExplanationStatus !== null}
+        transparent
+        animationType="fade"
+        presentationStyle="overFullScreen"
+        onRequestClose={dismissRsvpExplanation}
+      >
+        <View style={styles.explanationModalOverlay} accessibilityViewIsModal>
+          <Pressable
+            style={styles.explanationBackdrop}
+            onPress={dismissRsvpExplanation}
+            accessibilityRole="button"
+            accessibilityLabel="Close RSVP explanation"
+          />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.dialogKeyboardAvoider}
+          pointerEvents="box-none"
+        >
+          <View style={styles.explanationDialog}>
+            <View style={styles.explanationDialogContent}>
+              <Text variant="headlineSmall" style={styles.explanationDialogTitle}>
+                Explain your {rsvpExplanationStatus === 'maybe' ? 'Maybe' : "Can't Go"} RSVP
+              </Text>
+              <Text variant="bodySmall" style={styles.explanationPrompt}>
+                Please explain your response in 50–500 characters. Only admins can view it.
+              </Text>
+              <TextInput
+                mode="outlined"
+                multiline
+                numberOfLines={5}
+                value={rsvpExplanation}
+                onChangeText={setRsvpExplanation}
+                maxLength={500}
+                accessibilityLabel="RSVP explanation"
+                style={styles.explanationInput}
+              />
+              <Text variant="labelSmall" style={styles.explanationCount}>
+                {rsvpExplanation.trim().length}/500 characters
+              </Text>
+              <View style={styles.explanationActions}>
+                <Button
+                  onPress={() => {
+                    setRsvpExplanationStatus(null);
+                    setRsvpExplanation('');
+                  }}
+                  disabled={savingRsvp}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  mode="contained"
+                  onPress={() => void saveRsvpExplanation()}
+                  loading={savingRsvp}
+                  disabled={
+                    savingRsvp
+                    || rsvpExplanation.trim().length < 50
+                    || rsvpExplanation.trim().length > 500
+                  }
+                  accessibilityLabel="Save RSVP"
+                >
+                  Save RSVP
+                </Button>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+        </View>
+      </Modal>
       <UserListDialog
         visible={viewersOpen}
         title={`Seen by ${viewCount}`}
@@ -961,6 +1116,42 @@ const makeStyles = (t: SemanticTokens) => StyleSheet.create({
   attendeeGroup: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
   attendeesLabel: { fontWeight: fontWeight.semibold, color: t.textSecondary },
   attendeesText: { color: t.textSecondary, flex: 1 },
+  explanationsSection: { gap: space.sm, marginTop: space.md },
+  explanationsTitle: { fontWeight: fontWeight.semibold },
+  explanationCard: {
+    gap: space.xs,
+    padding: space.md,
+    borderWidth: 1,
+    borderColor: t.border,
+    borderRadius: radius.md,
+    backgroundColor: t.surfaceVariant,
+  },
+  explanationAuthor: { fontWeight: fontWeight.semibold, color: t.textSecondary },
+  explanationText: { color: t.textPrimary },
+  explanationPrompt: { color: t.textSecondary, marginBottom: space.sm },
+  explanationInput: { backgroundColor: t.surface },
+  explanationCount: { color: t.textMuted, textAlign: 'right', marginTop: space.xs },
+  explanationActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: space.sm, marginTop: space.md },
+  explanationModalOverlay: { flex: 1 },
+  explanationBackdrop: {
+    position: 'absolute',
+    inset: 0,
+    backgroundColor: t.textPrimary,
+    opacity: 0.32,
+  },
+  dialogKeyboardAvoider: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: space.xl,
+  },
+  explanationDialog: {
+    width: '100%',
+    maxHeight: '100%',
+    borderRadius: radius.lg,
+    backgroundColor: t.surface,
+  },
+  explanationDialogContent: { padding: space.xl },
+  explanationDialogTitle: { marginBottom: space.lg },
 
   // Comments
   comment: { flexDirection: 'row', gap: space.md, marginBottom: space.md },

@@ -10,12 +10,13 @@ export function useEventDetail(eventId: string, userId: string) {
   const [rsvpOptions, setRsvpOptions] = useState<EventRSVPOption[]>([]);
   const [myRsvp, setMyRsvp] = useState<RSVPStatus | null>(null);
   const [myRsvpOptionId, setMyRsvpOptionId] = useState<string | null>(null);
+  const [myRsvpExplanation, setMyRsvpExplanation] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
 
-    const [commentsRes, rsvpsRes, optionsRes] = await Promise.all([
+    const [commentsRes, rsvpsRes, optionsRes, explanationsRes] = await Promise.all([
       supabase
         .from('event_comments')
         .select('*, users(first_name, last_name, role, avatar_url)')
@@ -30,14 +31,30 @@ export function useEventDetail(eventId: string, userId: string) {
         .select('*')
         .eq('event_id', eventId)
         .order('sort_order', { ascending: true }),
+      supabase
+        .from('event_rsvp_explanations')
+        .select('user_id, explanation')
+        .eq('event_id', eventId),
     ]);
 
     if (commentsRes.data) setComments((commentsRes.data as unknown as EventComment[]).filter((c: any) => c.users != null));
     if (rsvpsRes.data) {
-      setRsvps((rsvpsRes.data as unknown as EventRSVP[]).filter((r: any) => r.users != null));
+      const explanationByUser = new Map(
+        (explanationsRes.data || []).map((row: any) => [row.user_id, row.explanation]),
+      );
+      const visibleRsvps = (rsvpsRes.data as unknown as EventRSVP[])
+        .filter((r: any) => r.users != null)
+        .map((rsvp) => {
+          const explanation = explanationByUser.get(rsvp.user_id);
+          return explanation ? { ...rsvp, explanation } : rsvp;
+        });
+      setRsvps(visibleRsvps);
       const mine = rsvpsRes.data.find((r: any) => r.user_id === userId);
       setMyRsvp(mine ? (mine.status as RSVPStatus) : null);
       setMyRsvpOptionId(mine?.rsvp_option_id || null);
+      setMyRsvpExplanation(
+        mine ? (explanationByUser.get(userId) as string | undefined) || null : null,
+      );
     }
     if (optionsRes.data) setRsvpOptions(optionsRes.data as EventRSVPOption[]);
     setLoading(false);
@@ -86,6 +103,7 @@ export function useEventDetail(eventId: string, userId: string) {
     const prevRsvps = rsvps;
     setMyRsvp(null);
     setMyRsvpOptionId(null);
+    setMyRsvpExplanation(null);
     setRsvps(rsvps.filter((r: any) => r.user_id !== userId));
 
     const { error } = await supabase
@@ -98,6 +116,9 @@ export function useEventDetail(eventId: string, userId: string) {
       // Revert on failure
       setMyRsvp(prevMyRsvp);
       setMyRsvpOptionId(prevMyRsvpOptionId);
+      setMyRsvpExplanation(
+        prevRsvps.find((rsvp) => rsvp.user_id === userId)?.explanation || null,
+      );
       setRsvps(prevRsvps);
       return error;
     }
@@ -108,45 +129,58 @@ export function useEventDetail(eventId: string, userId: string) {
   }, [eventId, userId, fetchData, triggerGcalSync, myRsvp, myRsvpOptionId, rsvps]);
 
   const updateRsvp = useCallback(
-    async (status: RSVPStatus, rsvpOptionId?: string) => {
+    async (status: RSVPStatus, rsvpOptionId?: string, explanation?: string) => {
+      const cleanExplanation = explanation?.trim() || '';
+      if (
+        (status === 'maybe' || status === 'no')
+        && (cleanExplanation.length < 50 || cleanExplanation.length > 500)
+      ) {
+        return new Error('Please explain your response in 50–500 characters.');
+      }
+
       // Toggle-off: if tapping the same status (and same option for custom), remove RSVP
       const sameStatus = status === myRsvp;
       const sameOption = rsvpOptionId === myRsvpOptionId || (!rsvpOptionId && !myRsvpOptionId);
-      if (sameStatus && sameOption) {
+      if (sameStatus && sameOption && explanation === undefined) {
         return removeRsvp();
       }
 
       // Optimistic update — immediately reflect the change in UI
       const prevMyRsvp = myRsvp;
       const prevMyRsvpOptionId = myRsvpOptionId;
+      const prevMyRsvpExplanation = myRsvpExplanation;
       const prevRsvps = rsvps;
       setMyRsvp(status);
       setMyRsvpOptionId(rsvpOptionId || null);
+      setMyRsvpExplanation(
+        status === 'maybe' || status === 'no' ? cleanExplanation : null,
+      );
 
       // Optimistically update the rsvps array for counts
       const existingIdx = rsvps.findIndex((r: any) => r.user_id === userId);
       if (existingIdx >= 0) {
         const updated = [...rsvps];
-        updated[existingIdx] = { ...updated[existingIdx], status, rsvp_option_id: rsvpOptionId || null } as any;
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          status,
+          rsvp_option_id: rsvpOptionId || null,
+          explanation: status === 'maybe' || status === 'no' ? cleanExplanation : undefined,
+        } as any;
         setRsvps(updated);
       }
 
-      const { error } = await supabase
-        .from('event_rsvps')
-        .upsert(
-          {
-            event_id: eventId,
-            user_id: userId,
-            status,
-            rsvp_option_id: rsvpOptionId || null,
-          },
-          { onConflict: 'event_id,user_id' }
-        );
+      const { error } = await supabase.rpc('save_event_rsvp', {
+        target_event_id: eventId,
+        target_status: status,
+        target_rsvp_option_id: rsvpOptionId || null,
+        target_explanation: status === 'maybe' || status === 'no' ? cleanExplanation : null,
+      });
 
       if (error) {
         // Revert optimistic update on failure
         setMyRsvp(prevMyRsvp);
         setMyRsvpOptionId(prevMyRsvpOptionId);
+        setMyRsvpExplanation(prevMyRsvpExplanation);
         setRsvps(prevRsvps);
         return error;
       }
@@ -159,7 +193,7 @@ export function useEventDetail(eventId: string, userId: string) {
 
       return null;
     },
-    [eventId, userId, fetchData, triggerGcalSync, myRsvp, myRsvpOptionId, rsvps, removeRsvp]
+    [eventId, userId, fetchData, triggerGcalSync, myRsvp, myRsvpOptionId, myRsvpExplanation, rsvps, removeRsvp]
   );
 
   const postComment = useCallback(
@@ -174,5 +208,17 @@ export function useEventDetail(eventId: string, userId: string) {
     [eventId, userId, fetchData]
   );
 
-  return { comments, rsvps, rsvpOptions, myRsvp, myRsvpOptionId, loading, refetch: fetchData, updateRsvp, removeRsvp, postComment };
+  return {
+    comments,
+    rsvps,
+    rsvpOptions,
+    myRsvp,
+    myRsvpOptionId,
+    myRsvpExplanation,
+    loading,
+    refetch: fetchData,
+    updateRsvp,
+    removeRsvp,
+    postComment,
+  };
 }

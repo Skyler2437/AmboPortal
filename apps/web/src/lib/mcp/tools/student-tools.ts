@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { createAdminClient } from "@ambo/database/admin-client";
 import { SERVICE_TYPES } from "@ambo/database/types";
+import { sanitizeText } from "@/lib/sanitize";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Extra = any; // RequestHandlerExtra — auth info accessed via extra.authInfo
@@ -45,21 +46,39 @@ export function registerStudentTools(server: McpServer) {
 
   // ─── RSVP to Event ────────────────────────────────────
   server.registerTool("rsvp_event", {
-    description: "RSVP to an Ambassador event (going, maybe, or no)",
+    description: "RSVP to an Ambassador event. Maybe and no require a 50–500 character explanation.",
     inputSchema: schema({
       event_id: z.string().describe("The UUID of the event"),
       status: z.enum(["going", "maybe", "no"]).describe("Your RSVP status"),
+      explanation: z.string().max(500).optional().describe(
+        "Required 50–500 character explanation when status is maybe or no",
+      ),
     }),
   }, async (args: any, extra: any) => {
     const { userId } = getAuth(extra, "write");
+    const explanation = typeof args.explanation === "string"
+      ? sanitizeText(args.explanation)
+      : "";
+    if (
+      (args.status === "maybe" || args.status === "no")
+      && (explanation.length < 50 || explanation.length > 500)
+    ) {
+      return textResult({
+        error: "Maybe and Can't Go RSVPs require an explanation of 50–500 characters.",
+      });
+    }
+
     const supabase = createAdminClient();
 
-    const { error } = await supabase
-      .from("event_rsvps")
-      .upsert(
-        { event_id: args.event_id, user_id: userId, status: args.status },
-        { onConflict: "event_id,user_id" }
-      );
+    const { error } = await supabase.rpc("save_event_rsvp_for_user", {
+      target_event_id: args.event_id,
+      target_user_id: userId,
+      target_status: args.status,
+      target_rsvp_option_id: null,
+      target_explanation: args.status === "maybe" || args.status === "no"
+        ? explanation
+        : null,
+    });
 
     if (error) return textResult({ error: error.message });
     return textResult({ ok: true, event_id: args.event_id, status: args.status });

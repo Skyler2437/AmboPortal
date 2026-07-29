@@ -120,6 +120,13 @@ beforeEach(() => {
   mocks.scrollToEnd.mockReset();
   mocks.detail.postComment.mockReset();
   mocks.detail.postComment.mockResolvedValue(null);
+  mocks.detail.updateRsvp.mockReset();
+  mocks.detail.updateRsvp.mockResolvedValue(null);
+  mocks.detail.rsvps = [];
+  mocks.detail.rsvpOptions = [];
+  mocks.detail.myRsvp = null;
+  mocks.detail.myRsvpOptionId = null;
+  mocks.detail.myRsvpExplanation = null;
   vi.mocked(AccessibilityInfo.announceForAccessibility).mockReset();
   mocks.supabaseFrom.mockReset();
   mocks.supabaseFrom.mockImplementation((table: string) => {
@@ -151,6 +158,53 @@ beforeEach(() => {
 });
 
 describe('EventDetailScreen engagement behavior', () => {
+  it.each([
+    ['Maybe', 'maybe'],
+    ["Can't Go", 'no'],
+  ] as const)('requires a 50–500 character explanation before saving %s', async (label, status) => {
+    const renderer = await renderScreen('student');
+
+    act(() => findByLabel(renderer, `Choose ${label} RSVP`).props.onPress());
+
+    const input = findByLabel(renderer, 'RSVP explanation');
+    expect(input.props.maxLength).toBe(500);
+    expect(findByLabel(renderer, 'Save RSVP').props.disabled).toBe(true);
+
+    act(() => input.props.onChangeText('A'.repeat(50)));
+    expect(findByLabel(renderer, 'Save RSVP').props.disabled).toBe(false);
+
+    await act(async () => {
+      await findByLabel(renderer, 'Save RSVP').props.onPress();
+    });
+
+    expect(mocks.detail.updateRsvp).toHaveBeenCalledWith(status, undefined, 'A'.repeat(50));
+  });
+
+  it('uses a keyboard-resizing native modal for the RSVP explanation', async () => {
+    const renderer = await renderScreen('student');
+
+    act(() => findByLabel(renderer, 'Choose Maybe RSVP').props.onPress());
+
+    expect(findAllByType(renderer, 'Modal')).toHaveLength(1);
+    expect(findAllByType(renderer, 'Dialog')).toHaveLength(0);
+  });
+
+  it('shows RSVP explanations to admins but not students', async () => {
+    mocks.detail.rsvps = [{
+      status: 'maybe',
+      user_id: 'student-2',
+      users: { first_name: 'Maya', last_name: 'Chen' },
+      explanation: 'I have another school commitment and may arrive after it ends.',
+    }];
+
+    const studentRenderer = await renderScreen('student');
+    expect(hasText(studentRenderer, 'I have another school commitment and may arrive after it ends.')).toBe(false);
+
+    const adminRenderer = await renderScreen('admin');
+    expect(hasText(adminRenderer, 'RSVP explanations')).toBe(true);
+    expect(hasText(adminRenderer, 'I have another school commitment and may arrive after it ends.')).toBe(true);
+  });
+
   it('guards duplicate comment sends and preserves a newer in-flight draft after success', async () => {
     const request = deferred<null>();
     mocks.detail.postComment.mockImplementation(() => request.promise);
