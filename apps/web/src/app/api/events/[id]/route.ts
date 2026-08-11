@@ -9,6 +9,11 @@ import {
     type EventActor,
 } from "@/lib/eventPermissions";
 import { checkContentLength, eventUpdateSchema } from "@/lib/validations";
+import {
+    RsvpOptionValidationError,
+    buildRsvpOptionMutationPlan,
+    type RsvpOptionMutationPlan,
+} from "@/lib/eventRsvpOptions";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -147,6 +152,31 @@ export async function PUT(
         );
     }
 
+    let rsvpOptionMutationPlan: RsvpOptionMutationPlan | undefined;
+    if (rsvp_options !== undefined) {
+        const { data: existingOptions, error: existingOptionsError } = await supabase
+            .from("event_rsvp_options")
+            .select("id, label, sort_order")
+            .eq("event_id", params.id)
+            .order("sort_order", { ascending: true });
+        if (existingOptionsError) {
+            console.error("[Events PUT] RSVP option lookup failed:", existingOptionsError);
+            return NextResponse.json({ error: "Failed to update RSVP options" }, { status: 500 });
+        }
+
+        try {
+            rsvpOptionMutationPlan = buildRsvpOptionMutationPlan(
+                existingOptions ?? [],
+                rsvp_options,
+            );
+        } catch (error) {
+            if (error instanceof RsvpOptionValidationError) {
+                return NextResponse.json({ error: error.message }, { status: 400 });
+            }
+            throw error;
+        }
+    }
+
     // Update the database
     let updated: Record<string, unknown> = { id: params.id };
     if (Object.keys(eventChanges).length > 0) {
@@ -163,57 +193,69 @@ export async function PUT(
         updated = data;
     }
 
+    let savedRsvpOptions: Array<{
+        id: string;
+        label: string;
+        sort_order: number;
+    }> | undefined;
+
     // ── Update custom RSVP options if provided ────────────
-    // Diff against the existing options instead of delete-and-reinsert:
-    // event_rsvps.rsvp_option_id is ON DELETE SET NULL, so rewriting rows
-    // with fresh ids would silently wipe every student's option choice on
-    // any event edit. Options that keep their label keep their id (and the
-    // RSVPs pointing at it); a renamed label counts as remove + add.
-    if (rsvp_options !== undefined) {
-        const incoming: string[] = [];
-        const seen = new Set<string>();
-        for (const raw of rsvp_options) {
-            const label = raw.trim();
-            if (!label || seen.has(label)) continue;
-            seen.add(label);
-            incoming.push(label);
-        }
-
-        const { data: existingOptions } = await supabase
-            .from("event_rsvp_options")
-            .select("id, label, sort_order")
-            .eq("event_id", params.id);
-
-        const existingByLabel = new Map(
-            (existingOptions ?? []).map((o) => [o.label as string, o])
-        );
-
-        const removedIds = (existingOptions ?? [])
-            .filter((o) => !seen.has(o.label as string))
-            .map((o) => o.id);
-        if (removedIds.length > 0) {
-            await supabase
+    // Stable object ids make renames and reordering safe. Legacy string arrays
+    // still preserve exact label matches for older clients. Deleting an option
+    // intentionally relies on event_rsvps.rsvp_option_id ON DELETE SET NULL,
+    // leaving the student's `going` RSVP intact.
+    if (rsvpOptionMutationPlan !== undefined) {
+        for (const option of rsvpOptionMutationPlan.updates) {
+            const { error } = await supabase
                 .from("event_rsvp_options")
-                .delete()
-                .in("id", removedIds);
-        }
-
-        const newRows: { event_id: string; label: string; sort_order: number }[] = [];
-        for (let idx = 0; idx < incoming.length; idx++) {
-            const label = incoming[idx];
-            const existing = existingByLabel.get(label);
-            if (!existing) {
-                newRows.push({ event_id: params.id, label, sort_order: idx });
-            } else if (existing.sort_order !== idx) {
-                await supabase
-                    .from("event_rsvp_options")
-                    .update({ sort_order: idx })
-                    .eq("id", existing.id);
+                .update({
+                    label: option.label,
+                    sort_order: option.sort_order,
+                })
+                .eq("id", option.id)
+                .eq("event_id", params.id);
+            if (error) {
+                console.error("[Events PUT] RSVP option update failed:", error);
+                return NextResponse.json({ error: "Failed to update RSVP options" }, { status: 500 });
             }
         }
-        if (newRows.length > 0) {
-            await supabase.from("event_rsvp_options").insert(newRows);
+
+        if (rsvpOptionMutationPlan.inserts.length > 0) {
+            const { error } = await supabase
+                .from("event_rsvp_options")
+                .insert(rsvpOptionMutationPlan.inserts.map((option) => ({
+                    event_id: params.id,
+                    label: option.label,
+                    sort_order: option.sort_order,
+                })));
+            if (error) {
+                console.error("[Events PUT] RSVP option insert failed:", error);
+                return NextResponse.json({ error: "Failed to update RSVP options" }, { status: 500 });
+            }
         }
+
+        if (rsvpOptionMutationPlan.deleteIds.length > 0) {
+            const { error } = await supabase
+                .from("event_rsvp_options")
+                .delete()
+                .eq("event_id", params.id)
+                .in("id", rsvpOptionMutationPlan.deleteIds);
+            if (error) {
+                console.error("[Events PUT] RSVP option delete failed:", error);
+                return NextResponse.json({ error: "Failed to update RSVP options" }, { status: 500 });
+            }
+        }
+
+        const { data: refreshedOptions, error: refreshedOptionsError } = await supabase
+            .from("event_rsvp_options")
+            .select("id, label, sort_order")
+            .eq("event_id", params.id)
+            .order("sort_order", { ascending: true });
+        if (refreshedOptionsError) {
+            console.error("[Events PUT] RSVP option refresh failed:", refreshedOptionsError);
+            return NextResponse.json({ error: "Failed to update RSVP options" }, { status: 500 });
+        }
+        savedRsvpOptions = refreshedOptions ?? [];
     }
 
     // ── Google Calendar sync for event-field changes. RSVP-only edits do not
@@ -236,7 +278,11 @@ export async function PUT(
         }
     }
 
-    return NextResponse.json({ event: updated, gcal_sync: gcalSync });
+    return NextResponse.json({
+        event: updated,
+        ...(savedRsvpOptions !== undefined && { rsvp_options: savedRsvpOptions }),
+        gcal_sync: gcalSync,
+    });
 }
 
 /**

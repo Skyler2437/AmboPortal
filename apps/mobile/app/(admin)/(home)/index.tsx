@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, ScrollView, StyleSheet, RefreshControl, Pressable } from 'react-native';
 import { Card, Text, ActivityIndicator } from 'react-native-paper';
-import { Stack, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAdminDashboardStats } from '@/hooks/useDashboardStats';
-import { CheddarRain } from '@/components/CheddarRain';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
-import { space, radius, fontSize, fontWeight } from '@/lib/theme';
+import { space, radius, fontWeight } from '@/lib/theme';
 import type { SemanticTokens } from '@/lib/theme';
 
 export default function AdminDashboard() {
@@ -14,7 +13,6 @@ export default function AdminDashboard() {
   const { styles, tokens } = useThemedStyles(makeStyles);
   const { pendingCount, userCount, applicationCount, submissionCount, loaded, refreshing, onRefresh } =
     useAdminDashboardStats();
-  const [cheddarActive, setCheddarActive] = useState(false);
 
   if (!loaded) {
     return (
@@ -26,21 +24,6 @@ export default function AdminDashboard() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <Pressable
-              onPress={() => setCheddarActive(true)}
-              disabled={cheddarActive}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Make it rain cheddar"
-            >
-              <Text style={styles.cheddarEmoji}>🧀</Text>
-            </Pressable>
-          ),
-        }}
-      />
       <ScrollView
       style={styles.flex}
       contentContainerStyle={styles.content}
@@ -94,7 +77,6 @@ export default function AdminDashboard() {
         </Pressable>
       </View>
       </ScrollView>
-      <CheddarRain isActive={cheddarActive} onComplete={() => setCheddarActive(false)} />
     </View>
   );
 }
@@ -103,7 +85,6 @@ const makeStyles = (t: SemanticTokens) => StyleSheet.create({
   loadingContainer: { flex: 1, backgroundColor: t.background, justifyContent: 'center', alignItems: 'center' },
   container: { flex: 1, backgroundColor: t.background },
   flex: { flex: 1 },
-  cheddarEmoji: { fontSize: fontSize.xl, marginRight: space.xs },
   content: { padding: space.lg, paddingBottom: space.xxl },
   statsGrid: { gap: space.md },
   statCard: { backgroundColor: t.surface, borderWidth: 1, borderColor: t.border, borderRadius: radius.md, overflow: 'hidden' },

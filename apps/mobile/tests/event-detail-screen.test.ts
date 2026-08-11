@@ -108,6 +108,7 @@ afterEach(() => {
     act(() => renderer.unmount());
   }
   alertSpy?.mockRestore();
+  vi.unstubAllGlobals();
 });
 
 beforeEach(() => {
@@ -122,6 +123,8 @@ beforeEach(() => {
   mocks.detail.postComment.mockResolvedValue(null);
   mocks.detail.updateRsvp.mockReset();
   mocks.detail.updateRsvp.mockResolvedValue(null);
+  mocks.detail.refetch.mockReset();
+  mocks.detail.refetch.mockResolvedValue(undefined);
   mocks.detail.rsvps = [];
   mocks.detail.rsvpOptions = [];
   mocks.detail.myRsvp = null;
@@ -600,6 +603,161 @@ describe('EventDetailScreen engagement behavior', () => {
     expect(flattenedStyle(uniform.props.style).minHeight).toBe(72);
     expect(flattenedStyle(description.props.style).height).toBeUndefined();
     expect(flattenedStyle(uniform.props.style).height).toBeUndefined();
+  });
+
+  it('edits custom RSVP options with stable IDs and refreshes after saving', async () => {
+    mocks.eventRequests.set('event-1', Promise.resolve({
+      data: testEvent('event-1', 'user-1'),
+      error: null,
+    }));
+    mocks.detail.rsvpOptions = [
+      { id: 'option-1', event_id: 'event-1', label: 'Bus 1', sort_order: 0 },
+      { id: 'option-2', event_id: 'event-1', label: 'Bus 2', sort_order: 1 },
+    ];
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        event: testEvent('event-1', 'user-1'),
+        rsvp_options: [],
+        gcal_sync: { synced: true },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const renderer = await renderScreen();
+
+    act(() => findByLabel(renderer, 'Edit event').props.onPress());
+    expect(findByLabel(renderer, 'RSVP option 1').props.value).toBe('Bus 1');
+    expect(findByLabel(renderer, 'RSVP option 2').props.value).toBe('Bus 2');
+
+    act(() => findByLabel(renderer, 'RSVP option 1').props.onChangeText('Morning Bus'));
+    act(() => findByLabel(renderer, 'Remove RSVP option 2').props.onPress());
+    act(() => findByLabel(renderer, 'Add RSVP option').props.onPress());
+    act(() => findByLabel(renderer, 'RSVP option 2').props.onChangeText('Evening Bus'));
+
+    await act(async () => {
+      await findByLabel(renderer, 'Save event changes').props.onPress();
+    });
+
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(requestBody.rsvp_options).toEqual([
+      { id: 'option-1', label: 'Morning Bus' },
+      { label: 'Evening Bus' },
+    ]);
+    expect(mocks.detail.refetch).toHaveBeenCalledTimes(1);
+    expect(renderer.root.findAll((node) => node.props.accessibilityLabel === 'Save event changes')).toHaveLength(0);
+    vi.unstubAllGlobals();
+  });
+
+  it('warns before deleting a selected option and keeps the RSVP Going', async () => {
+    mocks.eventRequests.set('event-1', Promise.resolve({
+      data: testEvent('event-1', 'user-1'),
+      error: null,
+    }));
+    mocks.detail.rsvpOptions = [
+      { id: 'option-1', event_id: 'event-1', label: 'Bus 1', sort_order: 0 },
+    ];
+    mocks.detail.rsvps = [{
+      status: 'going',
+      user_id: 'student-2',
+      rsvp_option_id: 'option-1',
+      users: { first_name: 'Maya', last_name: 'Chen' },
+    }];
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        event: testEvent('event-1', 'user-1'),
+        rsvp_options: [],
+        gcal_sync: { synced: true },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const renderer = await renderScreen();
+
+    act(() => findByLabel(renderer, 'Edit event').props.onPress());
+    act(() => findByLabel(renderer, 'Remove RSVP option 1').props.onPress());
+    await act(async () => {
+      await findByLabel(renderer, 'Save event changes').props.onPress();
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Remove RSVP option?',
+      expect.stringContaining('remain marked Going'),
+      expect.any(Array),
+    );
+    const buttons = alertSpy.mock.calls.at(-1)?.[2] as Array<{
+      text: string;
+      onPress?: () => void | Promise<void>;
+    }>;
+    const removeButton = buttons.find((button) => button.text === 'Remove & Save');
+    await act(async () => {
+      await removeButton?.onPress?.();
+    });
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).rsvp_options).toEqual([]);
+    expect(mocks.detail.refetch).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the option draft open when saving fails', async () => {
+    mocks.eventRequests.set('event-1', Promise.resolve({
+      data: testEvent('event-1', 'user-1'),
+      error: null,
+    }));
+    mocks.detail.rsvpOptions = [
+      { id: 'option-1', event_id: 'event-1', label: 'Bus 1', sort_order: 0 },
+    ];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      json: vi.fn().mockResolvedValue({ error: 'Unable to save options' }),
+    }));
+    const renderer = await renderScreen();
+
+    act(() => findByLabel(renderer, 'Edit event').props.onPress());
+    act(() => findByLabel(renderer, 'RSVP option 1').props.onChangeText('Keep my draft'));
+    await act(async () => {
+      await findByLabel(renderer, 'Save event changes').props.onPress();
+    });
+
+    expect(findByLabel(renderer, 'RSVP option 1').props.value).toBe('Keep my draft');
+    expect(findByLabel(renderer, 'Save event changes')).toBeDefined();
+    expect(alertSpy).toHaveBeenCalledWith('Error', 'Unable to save options');
+    expect(mocks.detail.refetch).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('uses the same shape and sizing for default and custom RSVP controls', async () => {
+    mocks.detail.rsvpOptions = [
+      { id: 'option-1', event_id: 'event-1', label: 'Bus 1', sort_order: 0 },
+    ];
+    mocks.detail.myRsvp = 'going';
+    mocks.detail.myRsvpOptionId = 'option-1';
+    const renderer = await renderScreen();
+
+    const defaultControl = renderer.root.find((node) => (
+      node.type === 'Pressable'
+      && node.props.accessibilityLabel === 'Choose Maybe RSVP'
+    ));
+    const customControl = renderer.root.find((node) => (
+      node.type === 'Pressable'
+      && node.props.accessibilityLabel === 'Choose Bus 1 RSVP'
+    ));
+    const defaultStyle = flattenedStyle(
+      defaultControl.props.style({ pressed: false }),
+    );
+    const customStyle = flattenedStyle(
+      customControl.props.style({ pressed: false }),
+    );
+
+    expect(customStyle.borderRadius).toBe(defaultStyle.borderRadius);
+    expect(customStyle.minHeight).toBe(defaultStyle.minHeight);
+    expect(customStyle.borderWidth).toBe(defaultStyle.borderWidth);
+    expect(customStyle.paddingVertical).toBe(defaultStyle.paddingVertical);
+    expect(
+      customControl.find((node) => node.type === 'MaterialCommunityIcon').props.size,
+    ).toBe(
+      defaultControl.find((node) => node.type === 'MaterialCommunityIcon').props.size,
+    );
   });
 });
 

@@ -88,9 +88,19 @@ export const eventUpdateSchema = z.object({
     .optional(),
   type: z.string().max(100, "Type must be 100 characters or less").optional(),
   uniform: z.string().max(500, "Uniform must be 500 characters or less").nullable().optional(),
-  rsvp_options: z.array(
-    z.string().trim().min(1, "RSVP option cannot be blank").max(200, "RSVP option must be 200 characters or less"),
-  ).max(50, "An event can have at most 50 RSVP options").optional(),
+  rsvp_options: z.array(z.union([
+    z.string()
+      .trim()
+      .min(1, "RSVP option cannot be blank")
+      .max(200, "RSVP option must be 200 characters or less"),
+    z.object({
+      id: z.string().uuid("Invalid RSVP option ID").optional(),
+      label: z.string()
+        .trim()
+        .min(1, "RSVP option cannot be blank")
+        .max(200, "RSVP option must be 200 characters or less"),
+    }).strict(),
+  ])).max(50, "An event can have at most 50 RSVP options").optional(),
 }).strict().refine(
   (data) => Object.keys(data).length > 0,
   { message: "At least one editable field is required" },

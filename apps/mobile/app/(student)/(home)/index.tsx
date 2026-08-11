@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { View, ScrollView, StyleSheet, RefreshControl, Pressable } from 'react-native';
 import { Card, Text, Button, Divider } from 'react-native-paper';
-import { Stack, useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAuth } from '@/providers/AuthProvider';
 import { useSubmissions } from '@/hooks/useSubmissions';
@@ -9,7 +9,6 @@ import { useStudentDashboardStats } from '@/hooks/useDashboardStats';
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
 import { hapticMedium } from '@/lib/haptics';
 import { ErrorState } from '@/components/ErrorState';
-import { CheddarRain } from '@/components/CheddarRain';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import { space, radius, fontSize, fontWeight, type SemanticTokens } from '@/lib/theme';
 
@@ -19,7 +18,6 @@ export default function StudentDashboard() {
   const userId = session?.user?.id || '';
   const { submissions, loading, error, refetch } = useSubmissions(userId);
   const [refreshing, setRefreshing] = useState(false);
-  const [cheddarActive, setCheddarActive] = useState(false);
   const initialLoadDone = useRef(false);
   const router = useRouter();
   const { upcomingEvents, resourceCount, refresh: refreshDash } = useStudentDashboardStats();
@@ -55,21 +53,6 @@ export default function StudentDashboard() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <Pressable
-              onPress={() => setCheddarActive(true)}
-              disabled={cheddarActive}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Make it rain cheddar"
-            >
-              <Text style={styles.cheddarEmoji}>🧀</Text>
-            </Pressable>
-          ),
-        }}
-      />
       <ScrollView
         style={styles.flex}
         contentContainerStyle={styles.content}
@@ -158,7 +141,6 @@ export default function StudentDashboard() {
           )}
         </View>
       </ScrollView>
-      <CheddarRain isActive={cheddarActive} onComplete={() => setCheddarActive(false)} />
     </View>
   );
 }
@@ -166,7 +148,6 @@ export default function StudentDashboard() {
 const makeStyles = (t: SemanticTokens) => StyleSheet.create({
   container: { flex: 1, backgroundColor: t.background },
   flex: { flex: 1 },
-  cheddarEmoji: { fontSize: fontSize.xl, marginRight: space.xs },
   content: { padding: space.lg, paddingBottom: space.xxl },
   header: { gap: space.lg, marginBottom: space.sm },
   statsGrid: { gap: space.md },

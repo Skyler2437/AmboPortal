@@ -62,6 +62,12 @@ type EventEngagementState = {
   presentUsers: DialogUser[];
 };
 
+type EditableRsvpOption = {
+  clientKey: string;
+  id?: string;
+  label: string;
+};
+
 function createEventEngagementState(eventId: string): EventEngagementState {
   return {
     eventId,
@@ -96,9 +102,11 @@ function RsvpButton({ label, icon, selected, color, bgColor, borderColor, count,
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      style={[
+      style={({ pressed }) => [
+        styles.rsvpChoice,
         styles.rsvpBtn,
         { borderColor: selected ? borderColor : tokens.border, backgroundColor: selected ? bgColor : tokens.surface },
+        pressed && styles.rsvpChoicePressed,
       ]}
     >
       <MaterialCommunityIcons name={icon as any} size={18} color={selected ? color : tokens.textSecondary} />
@@ -128,12 +136,16 @@ function RsvpOptionChip({ label, selected, count, onPress, unselectedColor }: Rs
   return (
     <Pressable
       onPress={onPress}
-      style={[
+      accessibilityRole="button"
+      accessibilityLabel={`Choose ${label} RSVP`}
+      style={({ pressed }) => [
+        styles.rsvpChoice,
         styles.optionChip,
         selected && styles.optionChipSelected,
+        pressed && styles.rsvpChoicePressed,
       ]}
     >
-      {selected && <MaterialCommunityIcons name="check" size={14} color={tokens.statusGoodFg} />}
+      {selected && <MaterialCommunityIcons name="check" size={18} color={tokens.statusGoodFg} />}
       <Text
         variant="bodySmall"
         style={[styles.optionChipText, { color: unselectedColor }, selected && styles.optionChipTextSelected]}
@@ -185,6 +197,8 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
   const [editStartDate, setEditStartDate] = useState(new Date());
   const [editEndDate, setEditEndDate] = useState(new Date());
   const [editAllDay, setEditAllDay] = useState(false);
+  const [editRsvpOptions, setEditRsvpOptions] = useState<EditableRsvpOption[]>([]);
+  const newOptionKeyRef = useRef(0);
 
   const insets = useSafeAreaInsets();
   const {
@@ -195,6 +209,7 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
     myRsvpOptionId,
     myRsvpExplanation,
     loading,
+    refetch,
     updateRsvp,
     postComment,
   } = useEventDetail(id, userId);
@@ -421,7 +436,60 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
 
   const baseUrl = process.env.EXPO_PUBLIC_WEB_URL || process.env.EXPO_PUBLIC_API_BASE_URL || '';
 
-  const handleSaveEdit = async () => {
+  const beginEditing = () => {
+    setEditTitle(event.title);
+    setEditDescription(event.description || '');
+    setEditUniform(event.uniform || '');
+    setEditStartDate(new Date(event.start_time));
+    setEditEndDate(new Date(event.end_time));
+    setEditRsvpOptions(rsvpOptions.map((option) => ({
+      clientKey: option.id,
+      id: option.id,
+      label: option.label,
+    })));
+    setEditing(true);
+  };
+
+  const addEditRsvpOption = () => {
+    if (editRsvpOptions.length >= 10) return;
+    newOptionKeyRef.current += 1;
+    setEditRsvpOptions((current) => [
+      ...current,
+      {
+        clientKey: `new-option-${newOptionKeyRef.current}`,
+        label: '',
+      },
+    ]);
+  };
+
+  const updateEditRsvpOption = (clientKey: string, label: string) => {
+    setEditRsvpOptions((current) => current.map((option) => (
+      option.clientKey === clientKey ? { ...option, label } : option
+    )));
+  };
+
+  const removeEditRsvpOption = (clientKey: string) => {
+    setEditRsvpOptions((current) => (
+      current.filter((option) => option.clientKey !== clientKey)
+    ));
+  };
+
+  const moveEditRsvpOption = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= editRsvpOptions.length) return;
+    setEditRsvpOptions((current) => {
+      const reordered = [...current];
+      [reordered[index], reordered[nextIndex]] = [
+        reordered[nextIndex],
+        reordered[index],
+      ];
+      return reordered;
+    });
+  };
+
+  const saveEventEdits = async (
+    cleanedOptions: Array<{ id?: string; label: string }>,
+  ) => {
     setSaving(true);
     try {
       const headers = await getApiHeaders();
@@ -434,6 +502,7 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
           uniform: editUniform.trim() || null,
           start_time: editStartDate.toISOString(),
           end_time: editEndDate.toISOString(),
+          rsvp_options: cleanedOptions,
         }),
       });
 
@@ -456,12 +525,64 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
         start_time: editStartDate.toISOString(),
         end_time: editEndDate.toISOString(),
       });
+      await refetch();
       setEditing(false);
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to update event');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSaveEdit = async () => {
+    const cleanedOptions = editRsvpOptions.map((option) => ({
+      ...(option.id && { id: option.id }),
+      label: option.label.trim(),
+    }));
+    if (cleanedOptions.some((option) => !option.label)) {
+      Alert.alert('Check RSVP Options', 'RSVP option labels cannot be blank.');
+      return;
+    }
+
+    const normalizedLabels = cleanedOptions.map((option) => option.label.toLocaleLowerCase());
+    if (new Set(normalizedLabels).size !== normalizedLabels.length) {
+      Alert.alert('Check RSVP Options', 'Each RSVP option needs a unique name.');
+      return;
+    }
+
+    const retainedIds = new Set(
+      cleanedOptions.flatMap((option) => option.id ? [option.id] : []),
+    );
+    const removedOptions = rsvpOptions.filter((option) => !retainedIds.has(option.id));
+    const removedIds = new Set(removedOptions.map((option) => option.id));
+    const affectedStudents = new Set(
+      rsvps
+        .filter((rsvp) => (
+          rsvp.status === 'going'
+          && rsvp.rsvp_option_id
+          && removedIds.has(rsvp.rsvp_option_id)
+        ))
+        .map((rsvp) => rsvp.user_id),
+    ).size;
+
+    if (affectedStudents > 0) {
+      const studentLabel = affectedStudents === 1 ? 'student' : 'students';
+      Alert.alert(
+        'Remove RSVP option?',
+        `${affectedStudents} ${studentLabel} selected ${removedOptions.map((option) => option.label).join(', ')}. They will remain marked Going, but their specific option will be cleared.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove & Save',
+            style: 'destructive',
+            onPress: () => saveEventEdits(cleanedOptions),
+          },
+        ],
+      );
+      return;
+    }
+
+    await saveEventEdits(cleanedOptions);
   };
 
   const handleDelete = () => {
@@ -614,7 +735,13 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                     icon={editing ? 'close' : 'pencil'}
                     mode="outlined"
                     size={20}
-                    onPress={() => setEditing(!editing)}
+                    onPress={() => {
+                      if (editing) {
+                        setEditing(false);
+                      } else {
+                        beginEditing();
+                      }
+                    }}
                     accessibilityLabel={editing ? 'Cancel editing' : 'Edit event'}
                   />
                   <IconButton
@@ -690,11 +817,63 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 onEndDateChange={setEditEndDate}
                 onAllDayChange={setEditAllDay}
               />
+              <View style={styles.editRsvpSection}>
+                <Text variant="labelMedium">RSVP Options (optional)</Text>
+                <Text variant="bodySmall" style={styles.rsvpHint}>
+                  Leave empty for the default Going, Maybe, and Can't Go choices.
+                </Text>
+                {editRsvpOptions.map((option, index) => (
+                  <View key={option.clientKey} style={styles.editRsvpOptionRow}>
+                    <TextInput
+                      mode="outlined"
+                      value={option.label}
+                      onChangeText={(label) => updateEditRsvpOption(option.clientKey, label)}
+                      placeholder={`Option ${index + 1}`}
+                      dense
+                      accessibilityLabel={`RSVP option ${index + 1}`}
+                      style={styles.editRsvpOptionInput}
+                    />
+                    <IconButton
+                      icon="arrow-up"
+                      size={18}
+                      disabled={index === 0}
+                      onPress={() => moveEditRsvpOption(index, -1)}
+                      accessibilityLabel={`Move RSVP option ${index + 1} up`}
+                    />
+                    <IconButton
+                      icon="arrow-down"
+                      size={18}
+                      disabled={index === editRsvpOptions.length - 1}
+                      onPress={() => moveEditRsvpOption(index, 1)}
+                      accessibilityLabel={`Move RSVP option ${index + 1} down`}
+                    />
+                    <IconButton
+                      icon="close"
+                      size={18}
+                      onPress={() => removeEditRsvpOption(option.clientKey)}
+                      accessibilityLabel={`Remove RSVP option ${index + 1}`}
+                    />
+                  </View>
+                ))}
+                {editRsvpOptions.length < 10 && (
+                  <Button
+                    mode="text"
+                    icon="plus"
+                    onPress={addEditRsvpOption}
+                    compact
+                    accessibilityLabel="Add RSVP option"
+                    style={styles.addOptionButton}
+                  >
+                    Add RSVP Option
+                  </Button>
+                )}
+              </View>
               <Button
                 mode="contained"
                 onPress={handleSaveEdit}
                 loading={saving}
                 disabled={!editTitle.trim() || saving}
+                accessibilityLabel="Save event changes"
                 style={styles.saveButton}
               >
                 Save Changes
@@ -1060,6 +1239,11 @@ const makeStyles = (t: SemanticTokens) => StyleSheet.create({
   editSection: { gap: space.md, marginBottom: space.sm },
   editInput: { backgroundColor: t.surface },
   textAreaInput: { textAlignVertical: 'top' },
+  editRsvpSection: { gap: space.xs },
+  rsvpHint: { color: t.textSecondary },
+  editRsvpOptionRow: { flexDirection: 'row', alignItems: 'center' },
+  editRsvpOptionInput: { flex: 1, backgroundColor: t.surface },
+  addOptionButton: { alignSelf: 'flex-start' },
   saveButton: { borderRadius: radius.md, marginTop: space.xs },
   title: { fontWeight: fontWeight.bold, marginBottom: space.md },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.sm },
@@ -1074,16 +1258,19 @@ const makeStyles = (t: SemanticTokens) => StyleSheet.create({
   rsvpSection: { gap: space.md, marginBottom: space.md },
   rsvpGroupLabel: { color: t.textSecondary, fontWeight: fontWeight.medium },
   rsvpBtnRow: { flexDirection: 'row', gap: space.sm, marginBottom: space.md },
-  rsvpBtn: {
-    flex: 1,
+  rsvpChoice: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: space.sm,
+    minHeight: 46,
+    paddingHorizontal: space.md,
     paddingVertical: space.md,
     borderRadius: radius.md,
     borderWidth: 1.5,
   },
+  rsvpChoicePressed: { opacity: 0.7 },
+  rsvpBtn: { flex: 1 },
   rsvpBtnText: { fontSize: fontSize.sm },
   engagementRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.lg, marginBottom: space.md },
   engagementButton: { flexDirection: 'row', alignItems: 'center', gap: space.xs, paddingVertical: space.xs },
@@ -1094,13 +1281,6 @@ const makeStyles = (t: SemanticTokens) => StyleSheet.create({
   // Custom option chips
   optionChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   optionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.xs,
-    paddingHorizontal: space.lg,
-    paddingVertical: space.sm,
-    borderRadius: radius.lg,
-    borderWidth: 1.5,
     borderColor: t.border,
     backgroundColor: t.surface,
   },
