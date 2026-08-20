@@ -3,11 +3,11 @@ import { createAdminClient } from "@ambo/database/admin-client";
 import { sendNotificationToUser } from "@/lib/notifications";
 
 /**
- * POST /api/events/send-reminders
+ * GET /api/events/send-reminders
  * Cron endpoint: sends reminder notifications 24 hours before events.
- * Called hourly by Vercel Cron.
+ * Called daily by Vercel Cron.
  */
-export async function POST(req: Request) {
+export async function GET(req: Request) {
     // Verify cron secret (Vercel sets this header automatically for cron
     // jobs). Fail closed: this route is on a public middleware path, so a
     // missing CRON_SECRET must not leave it anonymously triggerable.
@@ -105,3 +105,6 @@ export async function POST(req: Request) {
         notificationsSent: totalSent,
     });
 }
+
+// Keep authenticated manual POST requests working while Vercel Cron uses GET.
+export const POST = GET;

@@ -19,7 +19,7 @@ const PREF_ITEMS: { key: keyof Preferences; label: string; description: string }
     { key: "chat_messages", label: "Chat Messages", description: "Messages in chats you're in" },
     { key: "new_posts", label: "New Posts", description: "New team posts" },
     { key: "post_comments", label: "Post Comments", description: "Comments on posts you've made" },
-    { key: "events", label: "Events", description: "New and updated events" },
+    { key: "events", label: "Events", description: "New events" },
     { key: "event_comments", label: "Event Comments", description: "Comments on events" },
 ];
 

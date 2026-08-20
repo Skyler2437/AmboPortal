@@ -27,7 +27,7 @@ function isDuplicate(key: string): boolean {
  * POST /api/webhooks/notifications
  *
  * Unified notification dispatcher triggered by Supabase Database Webhooks.
- * Fires on INSERT events for: chat_messages, posts, comments, event_comments.
+ * Fires on INSERT events for: chat_messages, posts, comments, events, event_comments.
  */
 export async function POST(req: NextRequest) {
     // 1. Verify webhook secret
@@ -73,6 +73,9 @@ export async function POST(req: NextRequest) {
                 break;
             case "comments":
                 await handlePostComment(record);
+                break;
+            case "events":
+                await handleNewEvent(record);
                 break;
             case "event_comments":
                 await handleEventComment(record);
@@ -132,6 +135,56 @@ async function handleNewPost(record: Record<string, unknown>) {
                 mobilePath: "/(student)/posts",
             },
             userId
+        );
+    }
+}
+
+/**
+ * events INSERT -> notify admins; admin-created events also notify students.
+ */
+async function handleNewEvent(record: Record<string, unknown>) {
+    const eventId = record.id as string;
+    const creatorId = record.created_by as string;
+    const title = ((record.title as string) || "New Event").trim();
+    const description = ((record.description as string) || "").trim();
+
+    if (!eventId || !creatorId) return;
+
+    const supabase = createAdminClient();
+    const { data: creator } = await supabase
+        .from("users")
+        .select("first_name, role")
+        .eq("id", creatorId)
+        .single();
+
+    if (!creator) return;
+
+    const creatorName = creator.first_name || "Someone";
+    const truncatedDescription = description.substring(0, 100);
+
+    await sendNotificationToRole(
+        "admin",
+        {
+            title: `New Event from ${creatorName}`,
+            body: truncatedDescription ? `${title}: ${truncatedDescription}` : title,
+            url: "/admin/events",
+            mobilePath: `/(admin)/events/${eventId}`,
+        },
+        creatorId,
+        "events",
+    );
+
+    if (creator.role === "admin" || creator.role === "superadmin") {
+        await sendNotificationToRole(
+            "student",
+            {
+                title: `New Event: ${title}`,
+                body: truncatedDescription || "Tap to view event details.",
+                url: "/student/events",
+                mobilePath: `/(student)/events/${eventId}`,
+            },
+            creatorId,
+            "events",
         );
     }
 }
