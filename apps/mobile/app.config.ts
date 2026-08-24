@@ -22,16 +22,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     color: '#111827',
   });
 
-  const sentryPlugin: [string, Record<string, unknown>] | null =
-    process.env.SENTRY_ORG && process.env.SENTRY_PROJECT
-      ? [
-          '@sentry/react-native/expo',
-          {
-            organization: process.env.SENTRY_ORG,
-            project: process.env.SENTRY_PROJECT,
-          },
-        ]
-      : null;
+  const sentryPlugin: [string, Record<string, unknown>] = [
+    '@sentry/react-native/expo',
+    {
+      organization: process.env.SENTRY_ORG || '127makes',
+      project: process.env.SENTRY_PROJECT || 'amboportal-mobile',
+    },
+  ];
 
   return {
     ...config,
@@ -40,7 +37,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     plugins: [
       ...(config.plugins || []),
       ...(notificationsPlugin ? [notificationsPlugin] : []),
-      ...(sentryPlugin ? [sentryPlugin] : []),
+      sentryPlugin,
       '@react-native-community/datetimepicker',
     ],
     extra: {

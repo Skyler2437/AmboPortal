@@ -1,0 +1,46 @@
+diff --git a/node_modules/@react-navigation/routers/lib/module/StackRouter.js b/node_modules/@react-navigation/routers/lib/module/StackRouter.js
+index c1459d5..6882fc8 100644
+--- a/node_modules/@react-navigation/routers/lib/module/StackRouter.js
++++ b/node_modules/@react-navigation/routers/lib/module/StackRouter.js
+@@ -73,10 +73,14 @@ export function StackRouter(options) {
+         }]
+       };
+     },
+-    getRehydratedState(partialState, {
+-      routeNames,
+-      routeParamList
+-    }) {
++    getRehydratedState(partialState, rehydrationOptions) {
++      if (partialState === undefined) {
++        return router.getInitialState(rehydrationOptions);
++      }
++      const {
++        routeNames,
++        routeParamList
++      } = rehydrationOptions;
+       const state = partialState;
+       if (state.stale === false) {
+         return state;
+diff --git a/node_modules/@react-navigation/routers/lib/module/TabRouter.js b/node_modules/@react-navigation/routers/lib/module/TabRouter.js
+index f3b26a9..bb66fce 100644
+--- a/node_modules/@react-navigation/routers/lib/module/TabRouter.js
++++ b/node_modules/@react-navigation/routers/lib/module/TabRouter.js
+@@ -114,10 +114,14 @@ export function TabRouter({
+         preloadedRouteKeys: []
+       };
+     },
+-    getRehydratedState(partialState, {
+-      routeNames,
+-      routeParamList
+-    }) {
++    getRehydratedState(partialState, rehydrationOptions) {
++      if (partialState === undefined) {
++        return router.getInitialState(rehydrationOptions);
++      }
++      const {
++        routeNames,
++        routeParamList
++      } = rehydrationOptions;
+       const state = partialState;
+       if (state.stale === false) {
+         return state;
