@@ -7,6 +7,7 @@
     "packages/*"
   ],
   "scripts": {
+    "postinstall": "patch-package",
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "eas-cli": "^18.0.6",
+    "patch-package": "^8.0.0",
     "turbo": "^2.5.0"
   },
   "packageManager": "npm@10.2.0",

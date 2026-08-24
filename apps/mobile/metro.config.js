@@ -1,4 +1,4 @@
-const { getDefaultConfig } = require('expo/metro-config');
+const { getSentryExpoConfig } = require('@sentry/react-native/metro');
 const path = require('path');
 const fs = require('fs');
 
@@ -6,7 +6,7 @@ const fs = require('fs');
 const projectRoot = __dirname;
 const monorepoRoot = path.resolve(projectRoot, '../..');
 
-const config = getDefaultConfig(projectRoot);
+const config = getSentryExpoConfig(projectRoot);
 
 // 1. Watch all files within the monorepo (spread defaults so Expo's own folders aren't lost)
 config.watchFolders = [...(config.watchFolders || []), monorepoRoot];

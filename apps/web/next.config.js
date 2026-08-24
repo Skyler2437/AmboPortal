@@ -81,6 +81,6 @@ module.exports = withSentryConfig(nextConfig, {
 
   // Only upload source maps when SENTRY_AUTH_TOKEN is set
   authToken: process.env.SENTRY_AUTH_TOKEN,
-  org: process.env.SENTRY_ORG,
-  project: process.env.SENTRY_PROJECT,
+  org: process.env.SENTRY_ORG || "127makes",
+  project: process.env.SENTRY_PROJECT || "amboportal-web",
 });
