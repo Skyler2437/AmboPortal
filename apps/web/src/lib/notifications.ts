@@ -22,6 +22,8 @@ export type PushPayload = {
     badge?: number;
 };
 
+export type NotificationPreferenceKey = "events";
+
 export function buildExpoPushMessage(token: string, payload: PushPayload) {
     return {
         to: token,
@@ -45,6 +47,8 @@ async function sendExpoNotifications(
     payload: PushPayload,
     excludeUserId?: string
 ) {
+    if (userIds.length === 0) return;
+
     const supabase = createAdminClient();
 
     const { data: tokens } = await supabase
@@ -54,7 +58,9 @@ async function sendExpoNotifications(
 
     if (!tokens || tokens.length === 0) return;
 
+    const targetUserIds = new Set(userIds);
     const messages = tokens
+        .filter((t) => targetUserIds.has(t.user_id))
         .filter((t) => t.user_id !== excludeUserId)
         .filter((t) => t.token.startsWith("ExponentPushToken["))
         .map((t) => buildExpoPushMessage(t.token, payload));
@@ -151,7 +157,8 @@ export async function sendNotificationToUser(
 export async function sendNotificationToRole(
     role: "admin" | "student",
     payload: PushPayload,
-    excludeUserId?: string
+    excludeUserId?: string,
+    preferenceKey?: NotificationPreferenceKey,
 ) {
     const supabase = createAdminClient();
 
@@ -183,9 +190,34 @@ export async function sendNotificationToRole(
     }
 
     const userIds = users.map((u) => u.id);
-    const targetUserIds = excludeUserId
+    let targetUserIds = excludeUserId
         ? userIds.filter((id) => id !== excludeUserId)
         : userIds;
+
+    if (preferenceKey && targetUserIds.length > 0) {
+        const { data: preferences, error: preferenceError } = await supabase
+            .from("notification_preferences")
+            .select("user_id, events")
+            .in("user_id", targetUserIds);
+
+        if (preferenceError) {
+            await supabase.from("debug_logs").insert({
+                level: "error",
+                message: "Failed to fetch notification preferences",
+                data: { error: preferenceError, preferenceKey },
+            });
+            return;
+        }
+
+        const optedOut = new Set(
+            (preferences || [])
+                .filter((preference) => preference[preferenceKey] === false)
+                .map((preference) => preference.user_id),
+        );
+        targetUserIds = targetUserIds.filter((id) => !optedOut.has(id));
+    }
+
+    if (targetUserIds.length === 0) return;
 
     // 2. Web push: Fetch subscriptions for these users
     const { data: subscriptions, error: subError } = await supabase
@@ -247,5 +279,5 @@ export async function sendNotificationToRole(
     }
 
     // 3. Send to Expo push tokens (mobile)
-    await sendExpoNotifications(userIds, payload, excludeUserId);
+    await sendExpoNotifications(targetUserIds, payload);
 }
