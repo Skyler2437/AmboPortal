@@ -4,6 +4,7 @@ import { Avatar, ActivityIndicator } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
 import { supabase } from '@/lib/supabase';
+import { updateMobileProfile } from '@/lib/mobileProfile';
 import { useThemedStyles } from '@/hooks/useThemedStyles';
 import type { SemanticTokens } from '@/lib/theme';
 
@@ -55,16 +56,21 @@ export function AvatarUpload({ userId, avatarUrl, initials, size = 80, onUploade
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
       const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
 
-      // Update user record
-      const { error: updateErr } = await supabase
-        .from('users')
-        .update({ avatar_url: publicUrl })
-        .eq('id', userId);
-      if (updateErr) throw updateErr;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('You must be signed in to update your profile photo');
+      }
 
-      onUploaded(publicUrl);
-    } catch {
-      Alert.alert('Error', 'Failed to upload avatar');
+      const profile = await updateMobileProfile(session.access_token, {
+        avatarUrl: publicUrl,
+      });
+
+      onUploaded(profile.avatar_url || publicUrl);
+    } catch (error: unknown) {
+      Alert.alert(
+        'Error',
+        error instanceof Error ? error.message : 'Failed to upload avatar',
+      );
     } finally {
       setUploading(false);
     }

@@ -9,6 +9,7 @@ import { RoleBadge } from '@/components/RoleBadge';
 import { LoadingScreen } from '@/components/LoadingScreen';
 import { AvatarUpload } from '@/components/AvatarUpload';
 import { supabase } from '@/lib/supabase';
+import { updateMobileProfile } from '@/lib/mobileProfile';
 import Constants from 'expo-constants';
 import { hapticSuccess, hapticError, hapticWarning } from '@/lib/haptics';
 import { useBiometricLock } from '@/hooks/useBiometricLock';
@@ -81,30 +82,43 @@ export default function StudentProfile() {
 
     const emailChanged = email.trim().toLowerCase() !== user?.email;
 
-    // Update non-email fields via Supabase client
-    const { error } = await supabase
-      .from('users')
-      .update({
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    if (!currentSession?.access_token) {
+      setSaving(false);
+      hapticError();
+      Alert.alert('Error', 'You must be signed in to update your profile.');
+      return;
+    }
+
+    try {
+      await updateMobileProfile(currentSession.access_token, {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
         phone: phone.trim() || null,
-      })
-      .eq('id', userId);
+      });
+    } catch (error: unknown) {
+      setSaving(false);
+      hapticError();
+      Alert.alert(
+        'Profile Update Failed',
+        error instanceof Error ? error.message : 'Please try again.',
+      );
+      return;
+    }
 
     // Email changes go through a server-side endpoint that atomically
     // updates both auth.users and public.users using the admin client
     // (bypasses RLS and the broken confirmation-link flow).
-    if (!error && emailChanged) {
-      const baseUrl = process.env.EXPO_PUBLIC_WEB_URL;
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      if (!baseUrl || !currentSession?.access_token) {
+    if (emailChanged) {
+      const baseUrl = process.env.EXPO_PUBLIC_WEB_URL || process.env.EXPO_PUBLIC_API_BASE_URL;
+      if (!baseUrl) {
         setSaving(false);
         hapticError();
         Alert.alert('Error', 'Unable to update email. Please try again.');
         return;
       }
       try {
-        const res = await fetch(`${baseUrl}/api/mobile/update-email`, {
+        const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/mobile/update-email`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -128,14 +142,9 @@ export default function StudentProfile() {
     }
 
     setSaving(false);
-    if (error) {
-      hapticError();
-      Alert.alert('Error', error.message);
-    } else {
-      hapticSuccess();
-      Alert.alert('Success', 'Profile updated.');
-      refetch();
-    }
+    hapticSuccess();
+    Alert.alert('Success', 'Profile updated.');
+    refetch();
   };
 
   const handleDeleteAccount = useCallback(() => {
