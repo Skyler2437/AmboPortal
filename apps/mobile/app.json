@@ -2,7 +2,7 @@
   "expo": {
     "name": "AmboPortal",
     "slug": "ambo-portal",
-    "version": "1.5.2",
+    "version": "1.6.0",
     "scheme": "ambo",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.amboportal.app",
-      "buildNumber": "24",
+      "buildNumber": "25",
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
