@@ -8,6 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Loader2, Paperclip, X, FileText } from "lucide-react";
 import { toast } from "sonner";
+import { PostSettings, emptyPostSettings, postSettingsPayload } from "@/components/post/PostSettings";
+import { communityPostSchema } from "@/lib/community/validation";
 
 const MAX_FILES = 5;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -28,9 +30,11 @@ function isAllowed(file: File) {
     return ALLOWED_EXTENSIONS.includes(ext);
 }
 
-export function CreatePostForm({ backPath }: { backPath: string }) {
+export function CreatePostForm({ backPath, canManagePosts = false }: { backPath: string; canManagePosts?: boolean }) {
     const router = useRouter();
     const [content, setContent] = useState("");
+    const [settings, setSettings] = useState(emptyPostSettings);
+    const advanced = canManagePosts && (settings.scheduled || settings.isPoll);
     const [files, setFiles] = useState<File[]>([]);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
@@ -70,7 +74,14 @@ export function CreatePostForm({ backPath }: { backPath: string }) {
 
         try {
             let res: Response;
-            if (files.length > 0) {
+            if (advanced) {
+                if (files.length) throw new Error("Remove attachments before scheduling or creating a poll.");
+                const parsed = communityPostSchema.safeParse(postSettingsPayload(content, settings));
+                if (!parsed.success) throw new Error(parsed.error.issues[0].message);
+                res = await fetch("/api/community/posts", {
+                    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(parsed.data),
+                });
+            } else if (files.length > 0) {
                 const form = new FormData();
                 form.append("content", content);
                 files.forEach((f) => form.append("files", f, f.name));
@@ -85,14 +96,14 @@ export function CreatePostForm({ backPath }: { backPath: string }) {
 
             const data = await res.json().catch(() => ({}));
 
-            if (res.ok) {
-                toast.success("Post created");
+            if (res.ok && !res.redirected && (advanced ? data.id : data.post?.id)) {
+                toast.success(settings.scheduled ? "Post scheduled" : "Post created");
                 router.push(backPath);
             } else {
                 setError(data.error || "Failed to create post.");
             }
-        } catch {
-            setError("Network error. Please try again.");
+        } catch (error) {
+            setError(error instanceof Error ? error.message : "Network error. Please try again.");
         }
         setSubmitting(false);
     };
@@ -107,10 +118,13 @@ export function CreatePostForm({ backPath }: { backPath: string }) {
                             setContent(e.target.value);
                             if (error) setError("");
                         }}
-                        placeholder="Share something with the team..."
+                        aria-label={settings.isPoll ? "Poll question" : "Post text"}
+                        placeholder={settings.isPoll ? "Ask the team a question…" : "Share something with the team..."}
                         className="min-h-[160px] resize-none"
                         autoFocus
                     />
+
+                    {canManagePosts && <PostSettings value={settings} onChange={setSettings} disabled={submitting} />}
 
                     {files.length > 0 && (
                         <div className="space-y-2">
@@ -153,7 +167,7 @@ export function CreatePostForm({ backPath }: { backPath: string }) {
                             variant="ghost"
                             size="sm"
                             onClick={() => fileInputRef.current?.click()}
-                            disabled={files.length >= MAX_FILES}
+                            disabled={files.length >= MAX_FILES || advanced}
                         >
                             <Paperclip className="h-4 w-4 mr-2" />
                             Attach {files.length > 0 && `(${files.length}/${MAX_FILES})`}
@@ -167,7 +181,7 @@ export function CreatePostForm({ backPath }: { backPath: string }) {
                                 disabled={!content.trim() || submitting}
                             >
                                 {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                {submitting ? "Posting..." : "Post"}
+                                {submitting ? "Saving..." : settings.scheduled ? "Schedule post" : "Post"}
                             </Button>
                         </div>
                     </div>

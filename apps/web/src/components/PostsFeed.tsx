@@ -19,6 +19,7 @@ type Attachment = {
 type Post = {
     id: string;
     content: string;
+    is_poll?: boolean;
     created_at: string;
     users: {
         first_name: string;
@@ -140,6 +141,7 @@ export function PostsFeed({ currentUserId, currentUserRole, basePath }: { curren
     return (
         <div className="relative">
             <div className="space-y-4 max-w-2xl mx-auto">
+                {["admin", "superadmin"].includes(currentUserRole) && <Link className="inline-block text-sm underline" href="/admin/posts/scheduled">Scheduled posts</Link>}
                 {loading ? (
                     <div className="space-y-4">
                         {[1, 2, 3].map((i) => (

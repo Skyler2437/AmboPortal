@@ -16,6 +16,7 @@ import {
     Eye,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PostPoll } from "@/components/post/PostPoll";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FormattedText } from "@/components/FormattedText";
@@ -28,6 +29,7 @@ import { PostViewsDialog } from "@/components/post/PostViewsDialog";
 type Comment = {
     id: string;
     content: string;
+    is_poll?: boolean;
     created_at: string;
     user_id?: string;
     users: {
@@ -49,6 +51,7 @@ type Attachment = {
 type Post = {
     id: string;
     content: string;
+    is_poll?: boolean;
     created_at: string;
     user_id?: string;
     users: {
@@ -359,6 +362,7 @@ export function PostItem({ post, currentUserId, currentUserRole }: { post: Post;
                                 </p>
                             )}
 
+                            {post.is_poll && <PostPoll postId={post.id} />}
                             <PostAttachmentsView
                                 imageAttachments={imageAttachments}
                                 fileAttachments={fileAttachments}
