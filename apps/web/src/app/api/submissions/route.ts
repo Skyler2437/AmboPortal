@@ -6,8 +6,12 @@ import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
   const session = await getSession();
-  if (!session || session.role !== "student") {
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (session.role !== "student") {
+    return NextResponse.json({ error: "Only students can submit service hours." }, { status: 403 });
   }
 
   // Rate limit: 20 requests per 15 minutes
@@ -28,7 +32,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: sizeError }, { status: 413 });
   }
 
-  const body = await req.json();
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid submission. Please check your entries and try again." }, { status: 400 });
+  }
   const parsed = submissionSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -44,17 +53,17 @@ export async function POST(req: Request) {
   }
 
   const supabase = createAdminClient();
-  const { error } = await supabase.from("submissions").insert({
+  const { data, error } = await supabase.from("submissions").insert({
     user_id,
     service_date,
     service_type,
     credits,
     hours,
     feedback,
-  });
+  }).select("id").single();
 
-  if (error) {
-    return NextResponse.json({ error: "Request failed" }, { status: 400 });
+  if (error || !data?.id) {
+    return NextResponse.json({ error: "Your hours could not be saved. Your entries are still here; please try again." }, { status: 500 });
   }
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, id: data.id });
 }

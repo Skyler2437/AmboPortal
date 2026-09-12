@@ -1,3 +1,4 @@
+import { PostPoll } from '@/components/PostPoll';
 import React, { useState, useRef } from 'react';
 import {
   AccessibilityInfo,
@@ -337,6 +338,7 @@ export function PostDetailScreen({ role }: { role: AppRole }) {
               <LinkifiedText variant="bodyMedium" style={styles.content}>
                 {post.content}
               </LinkifiedText>
+              {post.is_poll && <PostPoll postId={post.id} />}
               <PostAttachments attachments={post.attachments} variant="full" />
             </>
           )}

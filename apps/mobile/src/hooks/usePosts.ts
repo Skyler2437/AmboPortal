@@ -17,6 +17,7 @@ export interface Attachment {
 }
 
 export interface Post {
+  is_poll?: boolean;
   id: string;
   user_id: string;
   content: string;

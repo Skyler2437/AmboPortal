@@ -5,6 +5,7 @@ import { COOKIE_NAME, verifySessionToken } from "@/lib/session";
 const PUBLIC_PATHS = [
   "/api/auth/",
   "/api/mobile/",
+  "/api/community/", // Community endpoints verify cookie or Bearer authentication themselves
   "/auth/callback",
   "/forgot-password",
   "/reset-password",
@@ -71,6 +72,9 @@ export async function middleware(request: NextRequest) {
   // Everything below requires a session
   // ──────────────────────────────────────────
   if (!session) {
+    if (path === "/api/submissions") {
+      return NextResponse.json({ error: "Your session expired. Please sign in again before submitting." }, { status: 401 });
+    }
     // /apply is accessible to both guests (public application) and logged-in basic users
     if (path.startsWith("/apply")) {
       return NextResponse.next();

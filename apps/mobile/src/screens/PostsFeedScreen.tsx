@@ -1,3 +1,4 @@
+import { Button } from 'react-native-paper';
 import React, { useRef } from 'react';
 import { FlatList, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -44,11 +45,13 @@ export function PostsFeedScreen({ role }: { role: AppRole }) {
   return (
     <Screen background="surface">
       <FlatList
+        ListHeaderComponent={role === 'admin' ? <Button icon="clock-outline" onPress={() => router.push('/(admin)/posts/scheduled' as Parameters<typeof router.push>[0])}>Scheduled posts</Button> : null}
         data={posts}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <PostCard
             id={item.id}
+            isPoll={item.is_poll}
             content={item.content}
             createdAt={item.created_at}
             author={item.users}

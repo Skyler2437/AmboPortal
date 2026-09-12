@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { schoolServiceDate } from "@/lib/submissionForm";
 import { SERVICE_TYPES } from "@ambo/database/types";
 
 export const postSchema = z.object({
@@ -20,18 +21,17 @@ export const commentSchema = z.object({
 export const submissionSchema = z.object({
   user_id: z.string().uuid("Invalid user ID"),
   service_date: z.string().refine((val) => {
-    const date = new Date(val);
-    if (isNaN(date.getTime())) return false;
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
-    return date < tomorrow;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) return false;
+    const date = new Date(`${val}T12:00:00Z`);
+    return !isNaN(date.getTime()) && date.toISOString().slice(0, 10) === val;
+  }, "Choose a valid service date").refine((val) => {
+    return val <= schoolServiceDate();
   }, "Service date must not be in the future"),
   service_type: z.enum(SERVICE_TYPES, {
-    message: "Invalid service type",
+    message: "Choose a service type; use Other for an event not listed",
   }),
-  credits: z.coerce.number().min(0, "Credits must be non-negative").default(0),
-  hours: z.coerce.number().min(0, "Hours must be non-negative").max(24, "Hours cannot exceed 24").default(0),
+  credits: z.coerce.number().finite("Enter valid tour credits").int("Tour credits must be a whole number").min(0, "Credits must be non-negative").default(0),
+  hours: z.coerce.number().finite("Enter valid hours").gt(0, "Hours must be greater than zero").max(24, "Hours cannot exceed 24"),
   feedback: z
     .string()
     .max(2000, "Feedback must be 2000 characters or less")

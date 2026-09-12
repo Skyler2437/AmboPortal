@@ -8,7 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, CheckCircle2, AlertCircle, History, CalendarDays } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, History } from "lucide-react";
+
+import { SERVICE_TYPES } from "@ambo/database/types";
+import { submissionSchema } from "@/lib/validations";
+import { emptySubmissionForm, schoolServiceDate, confirmSubmissionResponse } from "@/lib/submissionForm";
 
 const NOTES_MAX_LENGTH = 500;
 
@@ -18,12 +22,7 @@ export function NewSubmissionForm({ userId }: { userId: string }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  const [form, setForm] = useState({
-    event_title: "",
-    hours: "",
-    tour_credits: "",
-    notes: "",
-  });
+  const [form, setForm] = useState(emptySubmissionForm);
 
   const update = (key: string, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -33,21 +32,16 @@ export function NewSubmissionForm({ userId }: { userId: string }) {
     setError("");
     setLoading(true);
 
-    const hours = parseFloat(form.hours);
-    const credits = parseInt(form.tour_credits, 10);
-
-    if (!form.event_title.trim()) {
-      setError("Event title is required.");
-      setLoading(false);
-      return;
-    }
-    if (isNaN(hours) || hours <= 0) {
-      setError("Please enter valid hours.");
-      setLoading(false);
-      return;
-    }
-    if (isNaN(credits) || credits < 0) {
-      setError("Tour credits must be a whole number.");
+    const parsed = submissionSchema.safeParse({
+      user_id: userId,
+      service_type: form.service_type,
+      service_date: form.service_date,
+      hours: form.hours,
+      credits: form.tour_credits,
+      feedback: form.notes.trim() || null,
+    });
+    if (!parsed.success) {
+      setError(parsed.error.issues[0].message);
       setLoading(false);
       return;
     }
@@ -56,24 +50,14 @@ export function NewSubmissionForm({ userId }: { userId: string }) {
       const res = await fetch("/api/submissions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: userId,
-          service_type: form.event_title.trim(),
-          hours,
-          credits,
-          service_date: new Date().toISOString().split("T")[0],
-          feedback: form.notes.trim() || null,
-        }),
+        body: JSON.stringify(parsed.data),
       });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error || "Submission failed.");
-      } else {
-        setSuccess(true);
-      }
-    } catch {
-      setError("Network error. Please try again.");
+      await confirmSubmissionResponse(res);
+      setSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error && err.message !== "Failed to fetch"
+        ? err.message
+        : "Network error. Your entries have been kept. Please try again.");
     }
 
     setLoading(false);
@@ -96,7 +80,7 @@ export function NewSubmissionForm({ userId }: { userId: string }) {
             <Button
               onClick={() => {
                 setSuccess(false);
-                setForm({ event_title: "", hours: "", tour_credits: "", notes: "" });
+                setForm(emptySubmissionForm());
               }}
             >
               Log Another
@@ -121,23 +105,44 @@ export function NewSubmissionForm({ userId }: { userId: string }) {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="title">Event Title</Label>
-            <Input
-              id="title"
-              value={form.event_title}
-              onChange={(e) => update("event_title", e.target.value)}
-              placeholder="e.g. Family Tour, Campus Preview Day"
+            <Label htmlFor="service-type">Service Type</Label>
+            <select
+              id="service-type"
+              className="flex h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={form.service_type}
+              onChange={(e) => update("service_type", e.target.value)}
               required
-            />
+              disabled={loading}
+            >
+              <option value="" disabled>Choose a service type</option>
+              {SERVICE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+            </select>
+            <p className="text-xs text-muted-foreground">Choose Other if your event is not listed, then describe it in the notes.</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="service-date">Service Date</Label>
+            <Input
+              id="service-date"
+              type="date"
+              value={form.service_date}
+              max={schoolServiceDate()}
+              aria-describedby="service-date-help"
+              onChange={(e) => update("service_date", e.target.value)}
+              required
+              disabled={loading}
+            />
+            <p id="service-date-help" className="text-xs text-muted-foreground">Service dates use Pacific Time.</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="hours">Hours Served</Label>
               <Input
                 id="hours"
                 type="number"
-                step="0.5"
+                step="any"
+                max="24"
                 min="0"
                 value={form.hours}
                 onChange={(e) => update("hours", e.target.value)}
@@ -154,7 +159,7 @@ export function NewSubmissionForm({ userId }: { userId: string }) {
                 min="0"
                 value={form.tour_credits}
                 onChange={(e) => update("tour_credits", e.target.value)}
-                placeholder="1"
+                placeholder="0"
                 required
               />
             </div>
@@ -180,13 +185,8 @@ export function NewSubmissionForm({ userId }: { userId: string }) {
             />
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
-            <CalendarDays className="h-3.5 w-3.5" />
-            <span>Service date: <strong>{new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</strong> (today)</span>
-          </div>
-
           {error && (
-            <Alert variant="destructive">
+            <Alert variant="destructive" role="alert">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>

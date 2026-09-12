@@ -19,7 +19,7 @@ export default async function AdminNewPostPage() {
                 </Button>
                 <h1 className="text-lg font-semibold">New Post</h1>
             </div>
-            <CreatePostForm backPath="/admin/posts" />
+            <CreatePostForm backPath="/admin/posts" canManagePosts />
         </div>
     );
 }

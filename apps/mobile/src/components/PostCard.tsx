@@ -1,4 +1,5 @@
 import React from 'react';
+import { PostPoll } from '@/components/PostPoll';
 import { View, StyleSheet, Pressable, Share } from 'react-native';
 import { Avatar, Text, IconButton, Icon } from 'react-native-paper';
 import type { UserRole } from '@ambo/database';
@@ -9,6 +10,7 @@ import { getInitials } from '@/lib/format';
 import { type SemanticTokens, space, radius, fontSize, fontWeight } from '@/lib/theme';
 
 interface PostCardProps {
+  isPoll?: boolean;
   id: string;
   content: string;
   createdAt: string;
@@ -41,12 +43,12 @@ function formatTimeAgo(dateStr: string): string {
   return date.toLocaleDateString();
 }
 
-export function PostCard({ content, createdAt, author, commentCount, likeCount, viewCount, liked, attachments, onToggleLike, onPress }: PostCardProps) {
+export function PostCard({ id, isPoll, content, createdAt, author, commentCount, likeCount, viewCount, liked, attachments, onToggleLike, onPress }: PostCardProps) {
   const { styles, tokens } = useThemedStyles(makeStyles);
   const initials = getInitials(author.first_name, author.last_name);
 
   return (
-    <Pressable onPress={onPress} style={styles.card} accessibilityLabel={`Post by ${author.first_name} ${author.last_name}, ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}`} accessibilityRole="button">
+    <Pressable accessible={!isPoll} onPress={onPress} style={styles.card} accessibilityLabel={`Post by ${author.first_name} ${author.last_name}, ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}`} accessibilityRole="button">
       <View style={styles.header}>
         {author.avatar_url ? (
           <Avatar.Image size={36} source={{ uri: author.avatar_url }} />
@@ -65,6 +67,7 @@ export function PostCard({ content, createdAt, author, commentCount, likeCount, 
       <Text variant="bodyMedium" style={styles.content} numberOfLines={3}>
         {content}
       </Text>
+      {isPoll && <PostPoll postId={id} />}
       {attachments && attachments.length > 0 && (
         <PostAttachments attachments={attachments} variant="compact" />
       )}
@@ -81,7 +84,7 @@ export function PostCard({ content, createdAt, author, commentCount, likeCount, 
             />
             {likeCount > 0 && <Text variant="bodySmall" style={styles.likeCountText}>{likeCount}</Text>}
           </View>
-          <Text variant="bodySmall" style={styles.commentCount}>
+          <Text accessibilityRole="button" onPress={onPress} variant="bodySmall" style={styles.commentCount}>
             {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
           </Text>
         </View>

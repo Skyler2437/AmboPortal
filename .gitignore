@@ -50,3 +50,6 @@ supabase/.temp/
 *.mobileprovision
 *.orig.*
 .vercel
+
+# Database integration test source
+!apps/web/supabase/tests/*.mjs
