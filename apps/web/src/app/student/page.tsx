@@ -53,12 +53,16 @@ export default async function StudentDashboard() {
       label: "Approved Credits",
       value: totalCredits.toFixed(1),
       icon: Award,
-      color: "text-purple-600",
+      color: "text-brand",
     },
   ];
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-7">
+      <div>
+        <h1 className="page-heading">Your service</h1>
+        <p className="page-description">Keep track of your service hours and tour credits.</p>
+      </div>
       {pendingCount > 0 && (
         <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
           <AlertCircle className="h-4 w-4 shrink-0" />
@@ -71,19 +75,19 @@ export default async function StudentDashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-5">
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
-            <Card key={stat.label}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
+            <Card key={stat.label} className="shadow-none">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 gap-2 p-5 pb-3 sm:p-6 sm:pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
                   {stat.label}
                 </CardTitle>
-                <Icon className={`h-4 w-4 ${stat.color} text-muted-foreground`} />
+                <Icon className={`h-4 w-4 ${stat.color}`} />
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
+              <CardContent className="px-5 pb-5 sm:px-6 sm:pb-6">
+                <div className="text-4xl font-medium tracking-tight tabular-nums">{stat.value}</div>
               </CardContent>
             </Card>
           );

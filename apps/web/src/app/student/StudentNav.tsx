@@ -60,15 +60,16 @@ export default function StudentNav() {
   if (keyboardVisible) return null;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-lg border-t shadow-lg md:hidden pb-safe-bottom">
+    <nav aria-label="Mobile navigation" className="mobile-nav fixed bottom-0 left-0 right-0 z-40 md:hidden">
       <div className="flex items-center justify-around h-16">
         {navItems.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive = pathname === item.href || (item.href !== "/student" && pathname.startsWith(item.href + "/"));
           const Icon = item.icon;
           return (
             <Link
               key={item.href}
               href={item.href}
+              aria-current={isActive ? "page" : undefined}
               onClick={(e) => {
                 if (item.href === "/student/chat" && pathname.startsWith("/student/chat")) {
                   e.preventDefault();
@@ -76,7 +77,7 @@ export default function StudentNav() {
                 }
               }}
               className={cn(
-                "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
+                "relative flex min-w-0 flex-col items-center justify-center w-full h-full gap-1 transition-colors",
                 isActive
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
@@ -84,8 +85,7 @@ export default function StudentNav() {
             >
               <Icon
                 className={cn(
-                  "h-6 w-6 transition-transform",
-                  isActive && "scale-110",
+                  "h-5 w-5",
                   item.label === "New" && "text-primary h-7 w-7"
                 )}
                 strokeWidth={isActive ? 2.5 : 2}

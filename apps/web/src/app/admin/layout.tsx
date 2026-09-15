@@ -22,11 +22,11 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="portal-shell flex min-h-screen flex-col">
       {/* Desktop Top Nav */}
       <AdminTopNav />
 
-      <main className="flex-1 p-4 pb-24 md:p-8 md:pb-8 overflow-x-hidden">
+      <main className="portal-main flex-1 p-4 pb-24 md:p-8 md:pb-8 overflow-x-hidden">
         {children}
       </main>
 

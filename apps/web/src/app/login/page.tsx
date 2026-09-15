@@ -1,6 +1,5 @@
 "use client";
 
-import { Starfield } from "@/components/Starfield";
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -57,23 +56,22 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[#04050b] relative overflow-hidden">
-      <Starfield />
+    <div className="auth-surface">
 
-      <Card className="w-full max-w-sm shadow-lg z-10">
-        <CardHeader className="text-center space-y-2">
+      <Card className="auth-card max-w-md">
+        <CardHeader className="text-left space-y-3 p-7 pb-6 sm:p-8 sm:pb-6">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/logo.png"
             alt="AmboPortal logo"
             width={64}
             height={64}
-            className="mx-auto mb-2 h-16 w-16 object-contain"
+            className="mb-2 h-12 w-12 object-contain"
           />
-          <CardTitle className="text-2xl font-bold">AmboPortal</CardTitle>
+          <CardTitle className="text-2xl font-medium tracking-tight"><h1>AmboPortal</h1></CardTitle>
           <CardDescription>Sign in with your email and password</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-7 pb-7 sm:px-8 sm:pb-8">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="emailOrPhone">Email or Phone Number</Label>
@@ -106,7 +104,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute right-0 top-0 flex h-full w-11 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -129,7 +127,7 @@ export default function LoginPage() {
               </Alert>
             )}
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="h-11 w-full" disabled={loading}>
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -145,7 +143,7 @@ export default function LoginPage() {
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t" />
             </div>
-            <div className="relative flex justify-center text-xs uppercase">
+            <div className="relative flex justify-center text-xs">
               <span className="bg-background px-2 text-muted-foreground">
                 Or
               </span>

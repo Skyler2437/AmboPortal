@@ -95,15 +95,15 @@ export function NewSubmissionForm({ userId }: { userId: string }) {
   }
 
   return (
-    <Card className="max-w-xl mx-auto">
-      <CardHeader>
-        <CardTitle>Log Service Hours</CardTitle>
+    <Card className="max-w-xl mx-auto shadow-none">
+      <CardHeader className="border-b p-5 sm:p-7">
+        <CardTitle className="text-2xl font-medium tracking-tight"><h1>Log Service Hours</h1></CardTitle>
         <CardDescription>
           Enter the details of your completed service event.
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <CardContent className="p-5 sm:p-7">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2">
             <Label htmlFor="service-type">Service Type</Label>
             <select

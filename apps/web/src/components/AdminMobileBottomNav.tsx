@@ -70,7 +70,7 @@ export default function AdminMobileBottomNav() {
   if (keyboardVisible) return null;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-lg border-t shadow-lg md:hidden pb-safe-bottom">
+    <nav aria-label="Mobile navigation" className="mobile-nav fixed bottom-0 left-0 right-0 z-40 md:hidden">
       <div className="flex items-center justify-around h-16">
         {navItems.map((item) => {
           const isActive =
@@ -82,6 +82,7 @@ export default function AdminMobileBottomNav() {
             <Link
               key={item.href}
               href={item.href}
+              aria-current={isActive ? "page" : undefined}
               onClick={(e) => {
                 // If already on the chat page, force navigate to clear ?group= param
                 if (item.href === "/admin/chat" && pathname.startsWith("/admin/chat")) {
@@ -90,14 +91,14 @@ export default function AdminMobileBottomNav() {
                 }
               }}
               className={cn(
-                "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
+                "relative flex min-w-0 flex-col items-center justify-center w-full h-full gap-1 transition-colors",
                 isActive
                   ? "text-primary"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
               <Icon
-                className="h-6 w-6 transition-transform"
+                className="h-5 w-5"
                 strokeWidth={isActive ? 2.5 : 2}
               />
               <span className="text-[10px] font-medium">{item.label}</span>

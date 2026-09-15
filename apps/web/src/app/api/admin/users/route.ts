@@ -3,6 +3,7 @@ import { createAdminClient } from "@ambo/database/admin-client";
 import { NextRequest, NextResponse } from "next/server";
 import { userCreateSchema, checkContentLength } from "@/lib/validations";
 import { parsePagination, buildPaginatedResponse } from "@/lib/pagination";
+import { getTeamServiceTotals } from "@/lib/teamServiceTotals";
 
 export async function GET(req: NextRequest) {
   const { authorized, supabase } = await requireAdmin();
@@ -10,8 +11,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const url = new URL(req.url);
   const { page, limit, from, to } = parsePagination(
-    new URL(req.url),
+    url,
     { page: 1, limit: 50 }
   );
 
@@ -19,10 +21,24 @@ export async function GET(req: NextRequest) {
     .from("users")
     .select("id, first_name, last_name, phone, email, role", { count: "exact" })
     .order("last_name")
+    .order("id")
     .range(from, to);
 
   if (error) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+  if (url.searchParams.get("includeTotals") === "true") {
+    try {
+      const users = data || [];
+      const totals = await getTeamServiceTotals(supabase, users.filter((user) => user.role === "student").map((user) => user.id));
+      const withTotals = users.map((user) => ({
+        ...user,
+        ...(totals.get(user.id) ?? { total_hours: null, total_credits: null }),
+      }));
+      return NextResponse.json(buildPaginatedResponse(withTotals, count || 0, { page, limit, from, to }));
+    } catch {
+      return NextResponse.json({ error: "Unable to load student totals. Please try again." }, { status: 500 });
+    }
   }
   return NextResponse.json(buildPaginatedResponse(data || [], count || 0, { page, limit, from, to }));
 }

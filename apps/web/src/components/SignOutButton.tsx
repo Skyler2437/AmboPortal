@@ -1,8 +1,8 @@
 "use client";
 
 import { LogOut } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -12,6 +12,7 @@ interface SignOutButtonProps {
     fullWidth?: boolean;
     showIcon?: boolean;
     iconOnly?: boolean;
+    asMenuItem?: boolean;
 }
 
 export function SignOutButton({
@@ -19,9 +20,9 @@ export function SignOutButton({
     variant = "ghost",
     fullWidth = false,
     showIcon = true,
-    iconOnly = false
+    iconOnly = false,
+    asMenuItem = false
 }: SignOutButtonProps) {
-    const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
 
     const handleSignOut = async () => {
@@ -44,6 +45,22 @@ export function SignOutButton({
         }
     };
 
+    if (asMenuItem) {
+        return (
+            <DropdownMenuItem
+                className={cn("gap-2", className)}
+                disabled={isLoading}
+                onSelect={(event) => {
+                    event.preventDefault();
+                    void handleSignOut();
+                }}
+            >
+                <LogOut aria-hidden="true" />
+                {isLoading ? "Signing out..." : "Sign out"}
+            </DropdownMenuItem>
+        );
+    }
+
     return (
         <Button
             variant={variant}
@@ -53,6 +70,7 @@ export function SignOutButton({
                 iconOnly && "justify-center p-2",
                 className
             )}
+            aria-label={iconOnly ? (isLoading ? "Signing out" : "Sign out") : undefined}
             onClick={handleSignOut}
             disabled={isLoading}
         >

@@ -16,12 +16,14 @@ export async function fetchAllPages<T>(
   // Legacy flat-array responses have no pagination envelope
   if (!json.pagination) return json.data ?? json;
 
-  const totalPages = Math.min(json.pagination.totalPages ?? 1, 100);
+  const totalPages = json.pagination.totalPages ?? 1;
+  if (totalPages > 100) throw new Error("Too many pages to load completely");
   const rest = await Promise.all(
     Array.from({ length: Math.max(0, totalPages - 1) }, (_, i) =>
-      fetch(`${baseUrl}${sep}limit=${pageSize}&page=${i + 2}`).then((res) =>
-        res.ok ? res.json() : { data: [] }
-      )
+      fetch(`${baseUrl}${sep}limit=${pageSize}&page=${i + 2}`).then((res) => {
+        if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+        return res.json();
+      })
     )
   );
 

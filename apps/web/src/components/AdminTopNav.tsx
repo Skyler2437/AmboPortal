@@ -10,8 +10,7 @@ export function AdminTopNav() {
         { href: "/admin/chat", label: "Chat" },
         { href: "/admin/resources", label: "Resources" },
         { href: "/admin/team", label: "Team" },
-        { href: "/admin/profile", label: "Profile" },
     ];
 
-    return <TopNav items={navItems} />;
+    return <TopNav items={navItems} profileHref="/admin/profile" />;
 }

@@ -1,17 +1,12 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
-import Link from "next/link";
-import { ColumnDef } from "@tanstack/react-table";
-import { DataTable } from "@/components/ui/data-table";
-import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { SERVICE_TYPES } from "@ambo/database/types";
 import { toast } from "sonner";
 import { fetchAllPages } from "@/lib/fetch-all-pages";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -21,49 +16,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Check, AlertCircle, MoreHorizontal, ChevronRight, Search, CheckCircle2, XCircle, ClipboardList, Upload } from "lucide-react";
+import { Check, AlertCircle } from "lucide-react";
+import { SubmissionsTable } from "@/components/admin/SubmissionsTable";
+import type { SubmissionTableRow as SubRow } from "@/lib/submissionTable";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-
-type SubRow = {
-  id: string;
-  user_id: string;
-  service_date: string;
-  service_type: string;
-  credits: number;
-  hours: number;
-  feedback: string | null;
-  status: string;
-  created_at?: string;
-  users: { first_name: string; last_name: string; email: string } | null;
-};
-
-type StatusFilter = "All" | "Pending" | "Approved" | "Denied";
-
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <Badge
-      variant={
-        status === "Approved" ? "default" :
-          status === "Denied" ? "destructive" : "secondary"
-      }
-      className={
-        status === "Approved" ? "bg-green-100 text-green-800 hover:bg-green-100/80 border-green-200" :
-          status === "Denied" ? "" : "bg-yellow-100 text-yellow-800 hover:bg-yellow-100/80 border-yellow-200"
-      }
-    >
-      {status}
-    </Badge>
-  );
-}
 
 export function SubmissionsControl() {
   const [rows, setRows] = useState<SubRow[]>([]);
@@ -76,11 +34,7 @@ export function SubmissionsControl() {
   const [csvSuccess, setCsvSuccess] = useState("");
   const [uploading, setUploading] = useState(false);
 
-  // Filter & search state
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const fetchSubmissions = async () => {
+  const fetchSubmissions = useCallback(async () => {
     try {
       // Fetch every page — a single capped page hides older submissions and
       // makes the status counts and search silently wrong.
@@ -90,41 +44,13 @@ export function SubmissionsControl() {
       toast.error("Failed to load submissions");
     }
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     fetchSubmissions();
-  }, []);
+  }, [fetchSubmissions]);
 
-  // Status counts
-  const statusCounts = useMemo(() => {
-    const counts = { All: rows.length, Pending: 0, Approved: 0, Denied: 0 };
-    rows.forEach((r) => {
-      if (r.status === "Pending") counts.Pending++;
-      else if (r.status === "Approved") counts.Approved++;
-      else if (r.status === "Denied") counts.Denied++;
-    });
-    return counts;
-  }, [rows]);
-
-  // Filtered rows
-  const filteredRows = useMemo(() => {
-    let result = rows;
-    if (statusFilter !== "All") {
-      result = result.filter((r) => r.status === statusFilter);
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter((r) => {
-        const name = r.users ? `${r.users.first_name} ${r.users.last_name}`.toLowerCase() : "";
-        const email = r.users?.email?.toLowerCase() ?? "";
-        return name.includes(q) || email.includes(q) || r.service_type.toLowerCase().includes(q);
-      });
-    }
-    return result;
-  }, [rows, statusFilter, searchQuery]);
-
-  const startEdit = (row: SubRow) => {
+  const startEdit = useCallback((row: SubRow) => {
     setEditingRow(row);
     setEditForm({
       service_date: row.service_date,
@@ -135,7 +61,7 @@ export function SubmissionsControl() {
       status: row.status,
     });
     setEditDialogOpen(true);
-  };
+  }, []);
 
   const onEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,7 +83,7 @@ export function SubmissionsControl() {
     }
   };
 
-  const quickAction = async (row: SubRow, newStatus: "Approved" | "Denied") => {
+  const quickAction = useCallback(async (row: SubRow, newStatus: "Approved" | "Denied") => {
     const res = await fetch(`/api/admin/submissions/${row.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -171,7 +97,7 @@ export function SubmissionsControl() {
     } else {
       toast.error(`Failed to ${newStatus.toLowerCase()} submission`);
     }
-  };
+  }, [fetchSubmissions]);
 
   const csvInputRef = useRef<HTMLInputElement>(null);
 
@@ -200,97 +126,6 @@ export function SubmissionsControl() {
     setUploading(false);
   };
 
-  const columns: ColumnDef<SubRow>[] = [
-    {
-      accessorKey: "users.last_name",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Student" />
-      ),
-      cell: ({ row }) => {
-        const user = row.original.users;
-        return (
-          <div className="flex flex-col">
-            <span className="font-medium">
-              {user ? `${user.first_name} ${user.last_name}` : row.original.user_id}
-            </span>
-            {user && <span className="text-xs text-muted-foreground">{user.email}</span>}
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: "service_date",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Date" />
-      ),
-    },
-    {
-      accessorKey: "service_type",
-      header: "Type",
-    },
-    {
-      accessorKey: "hours",
-      header: "Hours",
-    },
-    {
-      accessorKey: "credits",
-      header: "Credits",
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }) => <StatusBadge status={row.getValue("status") as string} />,
-    },
-    {
-      id: "actions",
-      cell: ({ row }) => {
-        const isPending = row.original.status === "Pending";
-        return (
-          <div className="flex items-center gap-1">
-            {isPending && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
-                  onClick={() => quickAction(row.original, "Approved")}
-                  title="Approve"
-                  aria-label="Approve submission"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                  onClick={() => quickAction(row.original, "Denied")}
-                  title="Deny"
-                  aria-label="Deny submission"
-                >
-                  <XCircle className="h-4 w-4" />
-                </Button>
-              </>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
-                  <span className="sr-only">Open menu</span>
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => startEdit(row.original)}>
-                  Edit Submission
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        );
-      },
-    },
-  ];
-
   if (loading)
     return (
       <div className="space-y-3">
@@ -301,7 +136,11 @@ export function SubmissionsControl() {
     );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      <div>
+        <h1 className="page-heading">Service submissions</h1>
+        <p className="page-description">Review the hours and tour credits logged by your ambassadors.</p>
+      </div>
       <input
         ref={csvInputRef}
         type="file"
@@ -310,116 +149,17 @@ export function SubmissionsControl() {
         onChange={onCsvFileSelected}
       />
 
-      {/* Filter Chips, CSV Upload & Search */}
-      <div className="space-y-2">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex gap-2 flex-wrap">
-            {(["All", "Pending", "Approved", "Denied"] as StatusFilter[]).map((s) => (
-              <Button
-                key={s}
-                variant={statusFilter === s ? "default" : "outline"}
-                size="sm"
-                onClick={() => setStatusFilter(s)}
-                className="gap-1.5"
-              >
-                {s}
-                <Badge
-                  variant="secondary"
-                  className={`ml-0.5 px-1.5 py-0 text-[10px] min-w-[20px] text-center ${statusFilter === s ? "bg-background/20 text-primary-foreground" : ""}`}
-                >
-                  {statusCounts[s]}
-                </Badge>
-              </Button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 sm:ml-auto">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={uploading}
-              onClick={() => csvInputRef.current?.click()}
-              className="gap-2 shrink-0"
-            >
-              <Upload className="h-4 w-4" />
-              {uploading ? "Uploading..." : "CSV Upload"}
-            </Button>
-            <div className="relative flex-1 sm:w-64">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search student or type..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-9"
-              />
-            </div>
-          </div>
-        </div>
-        {csvError && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{csvError}</AlertDescription>
-          </Alert>
-        )}
-        {csvSuccess && (
-          <Alert className="bg-green-50 text-green-800 border-green-200">
-            <Check className="h-4 w-4 text-green-600" />
-            <AlertDescription>{csvSuccess}</AlertDescription>
-          </Alert>
-        )}
-      </div>
-
-      {/* Mobile Card List */}
-      <div className="md:hidden space-y-2">
-        {filteredRows.length === 0 ? (
-          <div className="text-center py-12 border rounded-xl bg-muted/30">
-            <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center mx-auto mb-3 text-muted-foreground">
-              <ClipboardList className="w-7 h-7" />
-            </div>
-            <h3 className="font-medium">No submissions found</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              {statusFilter !== "All" || searchQuery ? "Try adjusting your filters." : "Submissions will appear here once students log hours."}
-            </p>
-          </div>
-        ) : (
-          filteredRows.map((row) => (
-            <Link key={row.id} href={`/admin/submissions/${row.id}`}>
-              <div className="bg-white border rounded-lg p-3.5 flex items-center gap-3 active:bg-gray-50 hover:bg-gray-50 transition-colors">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm truncate">
-                      {row.users
-                        ? `${row.users.first_name} ${row.users.last_name}`
-                        : row.user_id}
-                    </span>
-                    <StatusBadge status={row.status} />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                    {row.service_type} &middot; {row.hours}h &middot; {row.service_date}
-                  </p>
-                </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-              </div>
-            </Link>
-          ))
-        )}
-      </div>
-
-      {/* Desktop Table */}
-      <div className="hidden md:block">
-        {filteredRows.length === 0 ? (
-          <div className="text-center py-12 border rounded-xl bg-muted/30">
-            <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center mx-auto mb-3 text-muted-foreground">
-              <ClipboardList className="w-7 h-7" />
-            </div>
-            <h3 className="font-medium">No submissions found</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              {statusFilter !== "All" || searchQuery ? "Try adjusting your filters." : "Submissions will appear here once students log hours."}
-            </p>
-          </div>
-        ) : (
-          <DataTable columns={columns} data={filteredRows} />
-        )}
-      </div>
+      <SubmissionsTable
+        rows={rows}
+        onEdit={startEdit}
+        onQuickAction={quickAction}
+        onUpload={() => csvInputRef.current?.click()}
+        uploading={uploading}
+        uploadFeedback={<>
+          {csvError && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{csvError}</AlertDescription></Alert>}
+          {csvSuccess && <Alert className="bg-green-50 text-green-800 border-green-200"><Check className="h-4 w-4 text-green-600" /><AlertDescription>{csvSuccess}</AlertDescription></Alert>}
+        </>}
+      />
 
       {/* Edit Dialog (desktop) */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>

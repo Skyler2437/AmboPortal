@@ -61,8 +61,7 @@ export function EventMonthCalendar({
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const cellCount = Math.ceil((startOffset + daysInMonth) / 7) * 7;
 
-    // Same day key the card view uses for grouping; API order (start_time asc)
-    // is preserved within each day.
+    // API order (start_time asc) is preserved within each day.
     const eventsByDay = new Map<string, EventDetailsWithMyRsvp[]>();
     for (const ev of events) {
         const key = new Date(ev.start_time).toDateString();

@@ -120,9 +120,9 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-white">
-      <Card className="w-full max-w-md shadow-lg">
-        <CardHeader className="text-center space-y-2">
+    <div className="auth-surface">
+      <Card className="auth-card max-w-md">
+        <CardHeader className="text-left space-y-3 p-7 pb-6 sm:p-8 sm:pb-6">
           <div className="mx-auto w-12 h-12 bg-primary rounded-xl flex items-center justify-center mb-2 shadow-md">
             <svg
               className="w-6 h-6 text-primary-foreground"
@@ -138,12 +138,12 @@ export default function RegisterPage() {
               />
             </svg>
           </div>
-          <CardTitle className="text-2xl font-bold">Create Account</CardTitle>
+          <CardTitle className="text-2xl font-medium tracking-tight"><h1>Create Account</h1></CardTitle>
           <CardDescription>
             Sign up with your Linfield email to get started
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-7 pb-7 sm:px-8 sm:pb-8">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

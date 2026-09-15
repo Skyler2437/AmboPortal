@@ -1,15 +1,12 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
-import Link from "next/link";
-import { ColumnDef } from "@tanstack/react-table";
-import { DataTable } from "@/components/ui/data-table";
-import { DataTableColumnHeader } from "@/components/ui/data-table-column-header";
+import { useCallback, useEffect, useState, useRef } from "react";
+import { TeamTable } from "@/components/admin/TeamTable";
+import type { TeamTableRow as UserRow } from "@/lib/teamTable";
 import { toast } from "sonner";
 import { fetchAllPages } from "@/lib/fetch-all-pages";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -20,31 +17,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { UserPlus, Check, AlertCircle, MoreHorizontal, ChevronRight, Search, Upload, Users } from "lucide-react";
+import { Check, AlertCircle } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
-type UserRow = {
-  id: string;
-  first_name: string;
-  last_name: string;
-  phone: string;
-  email: string;
-  role: string;
-};
-
 export function UserControl() {
   const [rows, setRows] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -54,7 +35,6 @@ export function UserControl() {
   const [uploading, setUploading] = useState(false);
 
   const [myRole, setMyRole] = useState<string>("student");
-  const [searchQuery, setSearchQuery] = useState("");
 
   const [addForm, setAddForm] = useState({
     first_name: "",
@@ -69,36 +49,27 @@ export function UserControl() {
   const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
   const [deletingUser, setDeletingUser] = useState(false);
 
-  const fetchUsers = async () => {
-    const meRes = await fetch("/api/auth/session");
-    if (meRes.ok) {
+  const fetchUsers = useCallback(async () => {
+    setLoadError("");
+    try {
+      const meRes = await fetch("/api/auth/session");
+      if (!meRes.ok) throw new Error("Could not load session");
       const session = await meRes.json();
       setMyRole(session.user?.role || "student");
-    }
-
-    try {
       // Fetch every page — a single capped page hides users past the 100th
       // alphabetically from the table and the search.
-      const all = await fetchAllPages<UserRow>("/api/admin/users");
+      const all = await fetchAllPages<UserRow>("/api/admin/users?includeTotals=true");
       setRows(all);
     } catch {
-      toast.error("Failed to load users");
+      setLoadError("Couldn’t load the team and student totals. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     fetchUsers();
-  }, []);
-
-  const filteredRows = useMemo(() => {
-    if (!searchQuery.trim()) return rows;
-    const q = searchQuery.toLowerCase();
-    return rows.filter((u) => {
-      const name = `${u.first_name} ${u.last_name}`.toLowerCase();
-      return name.includes(q) || u.email.toLowerCase().includes(q) || u.phone.includes(q) || u.role.includes(q);
-    });
-  }, [rows, searchQuery]);
+  }, [fetchUsers]);
 
   const onAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,7 +95,7 @@ export function UserControl() {
     }
   };
 
-  const startEdit = (user: UserRow) => {
+  const startEdit = useCallback((user: UserRow) => {
     setEditingUser(user);
     setEditForm({
       first_name: user.first_name,
@@ -134,7 +105,7 @@ export function UserControl() {
       role: user.role,
     });
     setEditDialogOpen(true);
-  };
+  }, []);
 
   const onEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -194,69 +165,6 @@ export function UserControl() {
     setUploading(false);
   };
 
-  const columns: ColumnDef<UserRow>[] = [
-    {
-      accessorKey: "first_name",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Name" />
-      ),
-      cell: ({ row }) => (
-        <div className="font-medium">
-          {row.getValue("first_name")} {row.original.last_name}
-        </div>
-      ),
-    },
-    {
-      accessorKey: "phone",
-      header: "Phone",
-    },
-    {
-      accessorKey: "email",
-      header: "Email",
-    },
-    {
-      accessorKey: "role",
-      header: "Role",
-      cell: ({ row }) => (
-        <Badge variant={row.getValue("role") === "admin" ? "default" : "secondary"}>
-          {row.getValue("role")}
-        </Badge>
-      ),
-    },
-    {
-      id: "actions",
-      cell: ({ row }) => {
-        const user = row.original;
-
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">Open menu</span>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => navigator.clipboard.writeText(user.email)}>
-                Copy Email
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => startEdit(user)}>
-                Edit User
-              </DropdownMenuItem>
-              {(myRole === "superadmin" || (myRole === "admin" && user.role !== "admin" && user.role !== "superadmin")) && (
-                <DropdownMenuItem onClick={() => setDeleteTarget(user)} className="text-red-600">
-                  Delete User
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
-      },
-    },
-  ];
-
   if (loading)
     return (
       <div className="space-y-3">
@@ -265,6 +173,14 @@ export function UserControl() {
         ))}
       </div>
     );
+
+  if (loadError) return <Alert variant="destructive">
+    <AlertCircle className="h-4 w-4" />
+    <AlertDescription className="space-y-3">
+      <p>{loadError}</p>
+      <Button variant="outline" size="sm" onClick={() => { setLoading(true); fetchUsers(); }}>Retry</Button>
+    </AlertDescription>
+  </Alert>;
 
   return (
     <div className="space-y-4">
@@ -351,99 +267,19 @@ export function UserControl() {
         onChange={onCsvFileSelected}
       />
 
-      {/* Actions: Add User, CSV Upload & Search */}
-      <div className="space-y-2">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <Button onClick={() => setAddDialogOpen(true)} className="gap-2 w-full sm:w-auto">
-            <UserPlus className="h-4 w-4" />
-            Add User
-          </Button>
-          <div className="flex items-center gap-2 sm:ml-auto">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={uploading}
-              onClick={() => csvInputRef.current?.click()}
-              className="gap-2 shrink-0"
-            >
-              <Upload className="h-4 w-4" />
-              {uploading ? "Uploading..." : "CSV Upload"}
-            </Button>
-            <div className="relative flex-1 sm:w-64">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by name, email, or role..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-9"
-              />
-            </div>
-          </div>
-        </div>
-        {csvError && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{csvError}</AlertDescription>
-          </Alert>
-        )}
-        {csvSuccess && (
-          <Alert className="bg-green-50 text-green-800 border-green-200">
-            <Check className="h-4 w-4 text-green-600" />
-            <AlertDescription>{csvSuccess}</AlertDescription>
-          </Alert>
-        )}
-      </div>
-
-      {/* Mobile Card List */}
-      <div className="md:hidden space-y-2">
-        {filteredRows.length === 0 ? (
-          <div className="text-center py-12 border rounded-xl bg-muted/30">
-            <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center mx-auto mb-3 text-muted-foreground">
-              <Users className="w-7 h-7" />
-            </div>
-            <h3 className="font-medium">No users found</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              {searchQuery ? "Try a different search term." : "Add your first team member to get started."}
-            </p>
-          </div>
-        ) : (
-          filteredRows.map((user) => (
-            <Link key={user.id} href={`/admin/users/${user.id}`}>
-              <div className="bg-white border rounded-lg p-3.5 flex items-center gap-3 active:bg-gray-50 hover:bg-gray-50 transition-colors">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm truncate">
-                      {user.first_name} {user.last_name}
-                    </span>
-                    <Badge variant={user.role === "admin" || user.role === "superadmin" ? "default" : "secondary"} className="shrink-0 text-xs">
-                      {user.role}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{user.email}</p>
-                </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-              </div>
-            </Link>
-          ))
-        )}
-      </div>
-
-      {/* Desktop Table */}
-      <div className="hidden md:block">
-        {filteredRows.length === 0 ? (
-          <div className="text-center py-12 border rounded-xl bg-muted/30">
-            <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center mx-auto mb-3 text-muted-foreground">
-              <Users className="w-7 h-7" />
-            </div>
-            <h3 className="font-medium">No users found</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              {searchQuery ? "Try a different search term." : "Add your first team member to get started."}
-            </p>
-          </div>
-        ) : (
-          <DataTable columns={columns} data={filteredRows} initialPageSize={50} />
-        )}
-      </div>
+      <TeamTable
+        rows={rows}
+        myRole={myRole}
+        onEdit={startEdit}
+        onDelete={setDeleteTarget}
+        onAdd={() => setAddDialogOpen(true)}
+        onUpload={() => csvInputRef.current?.click()}
+        uploading={uploading}
+        uploadFeedback={<>
+          {csvError && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{csvError}</AlertDescription></Alert>}
+          {csvSuccess && <Alert className="border-green-200 bg-green-50 text-green-800"><Check className="h-4 w-4 text-green-600" /><AlertDescription>{csvSuccess}</AlertDescription></Alert>}
+        </>}
+      />
 
       {/* Delete Confirmation */}
       <ConfirmDialog
