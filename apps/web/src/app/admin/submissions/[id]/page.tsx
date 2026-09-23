@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateTimePicker } from "@/components/DateTimePicker";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -128,11 +129,12 @@ export default function SubmissionDetailPage() {
       <form onSubmit={handleSave} className="space-y-4 bg-white border rounded-xl p-5 shadow-sm">
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <Label>Date</Label>
-            <Input
-              type="date"
+            <Label htmlFor="submission-date">Date</Label>
+            <DateTimePicker
+              id="submission-date"
+              mode="date"
               value={form.service_date || ""}
-              onChange={(e) => setForm((f) => ({ ...f, service_date: e.target.value }))}
+              onChange={(value) => setForm((f) => ({ ...f, service_date: value }))}
             />
           </div>
           <div className="space-y-1.5">

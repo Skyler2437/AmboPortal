@@ -7,6 +7,7 @@ import { fetchAllPages } from "@/lib/fetch-all-pages";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateTimePicker } from "@/components/DateTimePicker";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -170,11 +171,12 @@ export function SubmissionsControl() {
           <form onSubmit={onEditSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Date</Label>
-                <Input
-                  type="date"
+                <Label htmlFor="edit-submission-date">Date</Label>
+                <DateTimePicker
+                  id="edit-submission-date"
+                  mode="date"
                   value={editForm.service_date || ""}
-                  onChange={(e) => setEditForm(f => ({ ...f, service_date: e.target.value }))}
+                  onChange={(value) => setEditForm(f => ({ ...f, service_date: value }))}
                 />
               </div>
               <div className="space-y-2">

@@ -21,6 +21,7 @@ import {
     DrawerClose
 } from "@/components/ui/drawer";
 import { MotionButton } from "@/components/ui/motion-button";
+import { DateTimePicker } from "@/components/DateTimePicker";
 import { cn } from "@/lib/utils";
 
 // Mock Data
@@ -211,8 +212,8 @@ export default function DesignDemoPage() {
                                         </select>
                                     </div>
                                     <div className="flex-1 space-y-2">
-                                        <label className="text-sm font-medium">Due Date</label>
-                                        <input type="date" className="w-full px-3 py-2 border rounded-xl bg-gray-50" />
+                                        <label htmlFor="task-due-date" className="text-sm font-medium">Due Date</label>
+                                        <DateTimePicker id="task-due-date" mode="date" className="rounded-xl bg-gray-50" />
                                     </div>
                                 </div>
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { DateTimePicker } from "@/components/DateTimePicker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -122,13 +123,13 @@ export function NewSubmissionForm({ userId }: { userId: string }) {
 
           <div className="space-y-2">
             <Label htmlFor="service-date">Service Date</Label>
-            <Input
+            <DateTimePicker
               id="service-date"
-              type="date"
+              mode="date"
               value={form.service_date}
               max={schoolServiceDate()}
               aria-describedby="service-date-help"
-              onChange={(e) => update("service_date", e.target.value)}
+              onChange={(value) => update("service_date", value)}
               required
               disabled={loading}
             />

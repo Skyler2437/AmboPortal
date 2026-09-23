@@ -1,6 +1,7 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
+import { DateTimePicker } from "@/components/DateTimePicker";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
@@ -52,7 +53,7 @@ export function PostSettings({ value, onChange, disabled = false, requireSchedul
         {value.options.length < 6 && <Button type="button" variant="outline" size="sm" onClick={() => update({ options: [...value.options, ""] })}>Add option</Button>}
         <div className="space-y-1">
           <Label htmlFor="poll-close">Poll closes (optional)</Label>
-          <Input id="poll-close" type="datetime-local" value={value.closesAt} onChange={e => update({ closesAt: e.target.value })} />
+          <DateTimePicker id="poll-close" value={value.closesAt} onChange={closesAt => update({ closesAt })} disabled={disabled} />
           <p className="text-xs text-muted-foreground">Leave blank to keep voting open.</p>
         </div>
       </div>}
@@ -62,7 +63,7 @@ export function PostSettings({ value, onChange, disabled = false, requireSchedul
       </label>}
       {value.scheduled && <div className="space-y-1">
         <Label htmlFor="post-publish">Publish date and time</Label>
-        <Input id="post-publish" type="datetime-local" value={value.publishAt} onChange={e => update({ publishAt: e.target.value })} />
+        <DateTimePicker id="post-publish" value={value.publishAt} onChange={publishAt => update({ publishAt })} required disabled={disabled} />
         <p className="text-xs text-muted-foreground">Publishes within about a minute of this time. Notifications go out when published.</p>
       </div>}
       {(value.scheduled || value.isPoll) && <p className="text-xs text-muted-foreground">Times use your device’s timezone. Scheduled posts and polls currently support text without attachments.</p>}

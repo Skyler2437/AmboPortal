@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { DateTimePicker } from "@/components/DateTimePicker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -118,12 +119,10 @@ export function EventChatWrapper({ userId }: { userId: string }) {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label htmlFor="start_time">Start Time <span className="text-red-500">*</span></Label>
-                            <Input
+                            <DateTimePicker
                                 id="start_time"
-                                type="datetime-local"
                                 value={form.start_time}
-                                onChange={(e) => {
-                                    const newStart = e.target.value;
+                                onChange={(newStart) => {
                                     if (newStart) {
                                         const startDate = new Date(newStart);
                                         const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
@@ -136,16 +135,17 @@ export function EventChatWrapper({ userId }: { userId: string }) {
                                     }
                                 }}
                                 required
+                                disabled={loading}
                             />
                         </div>
                         <div className="space-y-2">
                             <Label htmlFor="end_time">End Time <span className="text-red-500">*</span></Label>
-                            <Input
+                            <DateTimePicker
                                 id="end_time"
-                                type="datetime-local"
                                 value={form.end_time}
-                                onChange={(e) => update("end_time", e.target.value)}
+                                onChange={(value) => update("end_time", value)}
                                 required
+                                disabled={loading}
                             />
                         </div>
                     </div>

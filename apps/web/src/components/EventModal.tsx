@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { DateTimePicker } from "@/components/DateTimePicker";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -321,7 +323,7 @@ export function EventModal({
         new Date(d).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     const formatDate = (d: string) =>
         new Date(d).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
-    // datetime-local inputs deal in local wall-clock time; shift by the zone
+    // Picker values use local wall-clock time; shift by the zone
     // offset before formatting (a bare toISOString() displays UTC, which then
     // shifts the event time on save).
     const toDatetimeLocal = (iso: string) => {
@@ -367,17 +369,27 @@ export function EventModal({
                                 className="text-lg font-bold"
                                 placeholder="Event Title"
                             />
-                            <div className="grid grid-cols-2 gap-2">
-                                <Input
-                                    type="datetime-local"
-                                    value={editForm.start_time ? toDatetimeLocal(editForm.start_time) : ""}
-                                    onChange={e => setEditForm({ ...editForm, start_time: new Date(e.target.value).toISOString() })}
-                                />
-                                <Input
-                                    type="datetime-local"
-                                    value={editForm.end_time ? toDatetimeLocal(editForm.end_time) : ""}
-                                    onChange={e => setEditForm({ ...editForm, end_time: new Date(e.target.value).toISOString() })}
-                                />
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div className="min-w-0 space-y-1.5">
+                                    <Label htmlFor="edit-event-start">Start Time</Label>
+                                    <DateTimePicker
+                                        id="edit-event-start"
+                                        value={editForm.start_time ? toDatetimeLocal(editForm.start_time) : ""}
+                                        onChange={value => setEditForm({ ...editForm, start_time: value ? new Date(value).toISOString() : "" })}
+                                        required
+                                        disabled={saving}
+                                    />
+                                </div>
+                                <div className="min-w-0 space-y-1.5">
+                                    <Label htmlFor="edit-event-end">End Time</Label>
+                                    <DateTimePicker
+                                        id="edit-event-end"
+                                        value={editForm.end_time ? toDatetimeLocal(editForm.end_time) : ""}
+                                        onChange={value => setEditForm({ ...editForm, end_time: value ? new Date(value).toISOString() : "" })}
+                                        required
+                                        disabled={saving}
+                                    />
+                                </div>
                             </div>
                         </div>
                     ) : (
