@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
+  report: vi.fn(),
   users: [
     { id: "student-on" },
     { id: "student-off" },
     { id: "student-default" },
   ],
   preferences: [
-    { user_id: "student-on", events: true },
-    { user_id: "student-off", events: false },
+    { user_id: "student-on", events: true, new_posts: false },
+    { user_id: "student-off", events: false, new_posts: true },
   ],
   tokens: [
     { id: "token-1", user_id: "student-on", token: "ExponentPushToken[on]" },
@@ -16,6 +17,7 @@ const state = vi.hoisted(() => ({
     { id: "token-3", user_id: "student-default", token: "ExponentPushToken[default]" },
   ],
 }));
+vi.mock('@/lib/reportOperationError', () => ({ reportOperationError: state.report }));
 
 const mockSupabase = {
   from: vi.fn((table: string) => {
@@ -31,8 +33,10 @@ const mockSupabase = {
     }
     if (table === "notification_preferences") {
       return {
-        select: vi.fn(() => ({
-          in: vi.fn(async () => ({ data: state.preferences, error: null })),
+        select: vi.fn((columns: string) => ({
+          in: vi.fn(async () => ({ data: state.preferences.map(row => Object.fromEntries(
+            columns.split(",").map(column => [column.trim(), row[column.trim() as keyof typeof row]]),
+          )), error: null })),
         })),
       };
     }
@@ -64,10 +68,25 @@ describe("role notification preferences", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
       json: async () => ({
         data: [{ status: "ok" }, { status: "ok" }],
       }),
     })));
+  });
+
+  it('reports rejected push batches instead of silently treating them as successful', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ errors: [{ code: 'TOO_MANY_REQUESTS' }] }), { status: 429 }));
+    await sendNotificationToRole('student', { title: 'Update', body: 'Test' }, undefined, 'new_posts');
+    expect(state.report).toHaveBeenCalledWith('notification.expo_send', expect.objectContaining({ status: 429 }));
+  });
+
+  it('reports per-device delivery ticket failures without including device tokens or post content', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ data: [
+      { status: 'error', details: { error: 'InvalidCredentials' }, message: 'Provider detail' }, { status: 'ok' },
+    ] })));
+    await sendNotificationToRole('student', { title: 'Update', body: 'Private post' }, undefined, 'new_posts');
+    expect(state.report).toHaveBeenCalledWith('notification.expo_ticket', { code: 'InvalidCredentials' });
   });
 
   it("excludes opted-out users while retaining users with default preferences", async () => {
@@ -86,6 +105,15 @@ describe("role notification preferences", () => {
     const request = vi.mocked(fetch).mock.calls[0][1];
     expect(JSON.parse(String(request?.body))).toEqual([
       expect.objectContaining({ to: "ExponentPushToken[on]" }),
+      expect.objectContaining({ to: "ExponentPushToken[default]" }),
+    ]);
+  });
+
+  it("uses the new-post preference independently of the event preference", async () => {
+    await sendNotificationToRole("student", { title: "New Post", body: "An update" }, undefined, "new_posts");
+    const request = vi.mocked(fetch).mock.calls[0][1];
+    expect(JSON.parse(String(request?.body))).toEqual([
+      expect.objectContaining({ to: "ExponentPushToken[off]" }),
       expect.objectContaining({ to: "ExponentPushToken[default]" }),
     ]);
   });

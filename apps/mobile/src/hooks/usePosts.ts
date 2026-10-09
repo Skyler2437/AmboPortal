@@ -3,8 +3,10 @@ import { supabase } from '@/lib/supabase';
 import { handleAuthError } from '@/lib/authError';
 import type { UserRole } from '@ambo/database';
 import { File } from 'expo-file-system';
-import { sanitizeFileName, type PickedAsset } from '@/lib/attachments';
+import { type PickedAsset } from '@/lib/attachments';
 import { DEMO_MODE, demoPosts } from '@/lib/demo';
+import { publishPost, type PostUploadAttempt } from '@ambo/utils';
+import { reportOperationError } from '@/lib/reportOperationError';
 
 const PAGE_SIZE = 20;
 
@@ -69,6 +71,7 @@ function usePostsReal() {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const loadingMoreRef = useRef(false);
+  const postAttempt = useRef<PostUploadAttempt>({});
 
   const fetchPosts = useCallback(async () => {
     setLoading(true);
@@ -117,35 +120,27 @@ function usePostsReal() {
   }, [fetchPosts]);
 
   const createPost = async (userId: string, content: string, attachments: PickedAsset[] = []) => {
-    const { data: inserted, error: err } = await supabase
-      .from('posts')
-      .insert({ user_id: userId, content })
-      .select('id')
-      .single();
-    if (err) throw err;
-    const postId = inserted.id as string;
-
-    for (const [i, asset] of attachments.entries()) {
-      const bytes = await new File(asset.uri).bytes();
-      const path = `${postId}/${Date.now()}_${i}_${sanitizeFileName(asset.name)}`;
-      const { error: upErr } = await supabase.storage
-        .from('post-attachments')
-        .upload(path, bytes, { contentType: asset.mimeType || 'application/octet-stream' });
-      if (upErr) throw upErr;
-
-      const { data: urlData } = supabase.storage.from('post-attachments').getPublicUrl(path);
-      const { error: rowErr } = await supabase.from('post_attachments').insert({
-        post_id: postId,
-        file_url: urlData.publicUrl,
-        file_name: asset.name,
-        file_type: asset.mimeType || 'application/octet-stream',
-        file_size: asset.size,
-        uploaded_by: userId,
-      });
-      if (rowErr) throw rowErr;
+    try {
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+      if (!session?.access_token || session.user.id !== userId) {
+        throw new Error('Your session expired. Sign in again before posting.');
+      }
+      const baseUrl = process.env.EXPO_PUBLIC_WEB_URL || process.env.EXPO_PUBLIC_API_BASE_URL;
+      if (!baseUrl) throw new Error('The server address is unavailable. Contact an administrator.');
+      await publishPost(postAttempt.current, content, attachments.map(asset => {
+        const localFile = new File(asset.uri);
+        return { key: asset.uri, name: asset.name, size: localFile.size,
+          type: asset.mimeType || 'application/octet-stream',
+          body: async () => (await localFile.bytes()).buffer as ArrayBuffer };
+      }), { baseUrl, token: session.access_token });
+      postAttempt.current = {};
+    } catch (error) {
+      reportOperationError('post.compose', error);
+      throw error;
     }
-
-    await fetchPosts();
+    // Publication is already confirmed. A feed refresh must not suggest posting again.
+    void fetchPosts().catch(error => reportOperationError('post.refresh', error));
   };
 
   const editPost = async (postId: string, content: string) => {

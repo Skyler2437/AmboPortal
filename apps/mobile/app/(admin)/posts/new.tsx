@@ -96,9 +96,9 @@ export default function NewPost() {
           <Avatar.Text size={36} label={initials} style={styles.avatarFallback} />
         )}
         <TextInput
+          editable={!posting}
           placeholder={draft.poll ? "Ask a poll question…" : "Share an update…"}
           accessibilityLabel={draft.poll ? "Poll question" : "Post text"}
-          editable={!posting}
           placeholderTextColor={tokens.textMuted}
           value={content}
           onChangeText={setContent}
@@ -110,7 +110,7 @@ export default function NewPost() {
 
       <PostDraftControls draft={draft} onChange={setDraft} disabled={posting || attachments.length > 0} />
       <Text style={{ paddingHorizontal: space.lg }}>Scheduled posts and polls support text only. {attachments.length > 0 ? 'Remove attachments to enable these options.' : ''}</Text>
-      {!draft.poll && !draft.publish_at && <PostAttachmentBar attachments={attachments} onChange={setAttachments} />}
+      {!draft.poll && !draft.publish_at && <PostAttachmentBar disabled={posting} attachments={attachments} onChange={setAttachments} />}
       </ScrollView>
     </KeyboardAvoidingView>
   );

@@ -10,6 +10,8 @@ import { AlertCircle, Loader2, Paperclip, X, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { PostSettings, emptyPostSettings, postSettingsPayload } from "@/components/post/PostSettings";
 import { communityPostSchema } from "@/lib/community/validation";
+import { publishPost, type PostUploadAttempt } from "@ambo/utils";
+import { reportOperationError } from "@/lib/reportOperationError";
 
 const MAX_FILES = 5;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -39,6 +41,7 @@ export function CreatePostForm({ backPath, canManagePosts = false }: { backPath:
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const postAttempt = useRef<PostUploadAttempt>({});
 
     const handleFilesSelected = (selected: FileList | null) => {
         if (!selected) return;
@@ -73,36 +76,30 @@ export function CreatePostForm({ backPath, canManagePosts = false }: { backPath:
         setError("");
 
         try {
-            let res: Response;
+            let saved = false;
             if (advanced) {
                 if (files.length) throw new Error("Remove attachments before scheduling or creating a poll.");
                 const parsed = communityPostSchema.safeParse(postSettingsPayload(content, settings));
                 if (!parsed.success) throw new Error(parsed.error.issues[0].message);
-                res = await fetch("/api/community/posts", {
+                const res = await fetch("/api/community/posts", {
                     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(parsed.data),
                 });
-            } else if (files.length > 0) {
-                const form = new FormData();
-                form.append("content", content);
-                files.forEach((f) => form.append("files", f, f.name));
-                res = await fetch("/api/posts", { method: "POST", body: form });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || res.redirected || !data.id) throw new Error(data.error || "Could not save the post. Please try again.");
+                saved = true;
             } else {
-                res = await fetch("/api/posts", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ content }),
-                });
+                await publishPost(postAttempt.current, content, files.map(file => ({
+                    key: `${file.name}:${file.lastModified}`, name: file.name, size: file.size,
+                    type: file.type, body: async () => file,
+                })));
+                saved = true;
             }
-
-            const data = await res.json().catch(() => ({}));
-
-            if (res.ok && !res.redirected && (advanced ? data.id : data.post?.id)) {
+            if (saved) {
                 toast.success(settings.scheduled ? "Post scheduled" : "Post created");
                 router.push(backPath);
-            } else {
-                setError(data.error || "Failed to create post.");
             }
         } catch (error) {
+            reportOperationError("post.compose", error);
             setError(error instanceof Error ? error.message : "Network error. Please try again.");
         }
         setSubmitting(false);
@@ -121,6 +118,7 @@ export function CreatePostForm({ backPath, canManagePosts = false }: { backPath:
                         aria-label={settings.isPoll ? "Poll question" : "Post text"}
                         placeholder={settings.isPoll ? "Ask the team a question…" : "Share something with the team..."}
                         className="min-h-[160px] resize-none"
+                        disabled={submitting}
                         autoFocus
                     />
 
@@ -135,6 +133,7 @@ export function CreatePostForm({ backPath, canManagePosts = false }: { backPath:
                                     <span className="text-xs text-muted-foreground shrink-0">{formatBytes(f.size)}</span>
                                     <button
                                         type="button"
+                                        disabled={submitting}
                                         onClick={() => removeFile(idx)}
                                         className="text-muted-foreground hover:text-red-500"
                                         aria-label={`Remove ${f.name}`}
@@ -167,7 +166,7 @@ export function CreatePostForm({ backPath, canManagePosts = false }: { backPath:
                             variant="ghost"
                             size="sm"
                             onClick={() => fileInputRef.current?.click()}
-                            disabled={files.length >= MAX_FILES || advanced}
+                            disabled={submitting || files.length >= MAX_FILES || advanced}
                         >
                             <Paperclip className="h-4 w-4 mr-2" />
                             Attach {files.length > 0 && `(${files.length}/${MAX_FILES})`}

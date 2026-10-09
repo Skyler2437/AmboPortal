@@ -41,6 +41,12 @@ function roleHome(role: string): string {
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
+  // These two POST handlers validate live account roles for either web cookies
+  // or iPhone Bearer sessions. Other post endpoints keep their existing guard.
+  if (request.method === "POST" && (path === "/api/posts" || path === "/api/posts/uploads")) {
+    return NextResponse.next();
+  }
+
   // Rewrite POST /register to /oauth/register for MCP OAuth compatibility.
   // Claude.ai ignores OAuth metadata and hits /register directly.
   // The /register page.tsx still serves browser GET requests normally.

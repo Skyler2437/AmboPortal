@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import { createAdminClient } from "@ambo/database/admin-client";
+import { reportOperationError } from "@/lib/reportOperationError";
 
 // Initialize web-push with VAPID keys
 if (
@@ -22,7 +23,7 @@ export type PushPayload = {
     badge?: number;
 };
 
-export type NotificationPreferenceKey = "events";
+export type NotificationPreferenceKey = "events" | "new_posts";
 
 export function buildExpoPushMessage(token: string, payload: PushPayload) {
     return {
@@ -51,18 +52,19 @@ async function sendExpoNotifications(
 
     const supabase = createAdminClient();
 
-    const { data: tokens } = await supabase
+    const { data: tokens, error: tokenError } = await supabase
         .from("expo_push_tokens")
         .select("id, user_id, token")
         .in("user_id", userIds);
 
+    if (tokenError) reportOperationError("notification.tokens", tokenError);
     if (!tokens || tokens.length === 0) return;
 
     const targetUserIds = new Set(userIds);
     const messages = tokens
         .filter((t) => targetUserIds.has(t.user_id))
         .filter((t) => t.user_id !== excludeUserId)
-        .filter((t) => t.token.startsWith("ExponentPushToken["))
+        .filter((t) => /^(ExponentPushToken|ExpoPushToken)\[/.test(t.token))
         .map((t) => buildExpoPushMessage(t.token, payload));
 
     if (messages.length === 0) return;
@@ -84,11 +86,22 @@ async function sendExpoNotifications(
                 body: JSON.stringify(chunk),
             });
 
+            if (!res.ok) {
+                reportOperationError("notification.expo_send", { status: res.status });
+                continue;
+            }
             const result = await res.json();
+            if (!Array.isArray(result.data) || result.data.length !== chunk.length) {
+                reportOperationError("notification.expo_send", { code: "INVALID_RESPONSE" });
+                continue;
+            }
 
             // Clean up invalid tokens (DeviceNotRegistered)
             if (result.data) {
                 for (let i = 0; i < result.data.length; i++) {
+                    if (result.data[i].status === "error") {
+                        reportOperationError("notification.expo_ticket", { code: result.data[i].details?.error });
+                    }
                     if (result.data[i].status === "error" &&
                         result.data[i].details?.error === "DeviceNotRegistered") {
                         const badToken = chunk[i].to;
@@ -100,7 +113,7 @@ async function sendExpoNotifications(
                 }
             }
         } catch (err) {
-            console.error("[ExpoPush] Failed to send:", err);
+            reportOperationError("notification.expo_send", err);
         }
     }
 }
@@ -181,6 +194,7 @@ export async function sendNotificationToRole(
         .in("role", roles);
 
     if (userError || !users || users.length === 0) {
+        if (userError) reportOperationError("notification.recipients", userError);
         await supabase.from("debug_logs").insert({
             level: "error",
             message: "Failed to fetch users for role",
@@ -197,10 +211,11 @@ export async function sendNotificationToRole(
     if (preferenceKey && targetUserIds.length > 0) {
         const { data: preferences, error: preferenceError } = await supabase
             .from("notification_preferences")
-            .select("user_id, events")
+            .select("user_id, events, new_posts")
             .in("user_id", targetUserIds);
 
         if (preferenceError) {
+            reportOperationError("notification.preferences", preferenceError);
             await supabase.from("debug_logs").insert({
                 level: "error",
                 message: "Failed to fetch notification preferences",

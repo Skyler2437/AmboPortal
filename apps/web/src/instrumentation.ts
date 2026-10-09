@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { redactUploadTelemetry } from "@ambo/utils";
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
@@ -6,6 +7,8 @@ export async function register() {
       dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
       enabled: process.env.NODE_ENV === "production",
       tracesSampleRate: 0.1,
+      beforeSend: redactUploadTelemetry,
+      beforeSendTransaction: redactUploadTelemetry,
     });
   }
 
@@ -14,6 +17,8 @@ export async function register() {
       dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
       enabled: process.env.NODE_ENV === "production",
       tracesSampleRate: 0.1,
+      beforeSend: redactUploadTelemetry,
+      beforeSendTransaction: redactUploadTelemetry,
     });
   }
 }

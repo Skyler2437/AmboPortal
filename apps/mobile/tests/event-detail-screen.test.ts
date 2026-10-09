@@ -44,6 +44,13 @@ import { EventDetailScreen } from '@/screens/EventDetailScreen';
 const mountedRenderers: ReactTestRenderer[] = [];
 let alertSpy: ReturnType<typeof vi.spyOn>;
 
+it('shows a Going RSVP failure instead of silently ignoring it', async () => {
+  mocks.detail.updateRsvp.mockResolvedValue(new Error('Could not save your RSVP. Please try again.'));
+  const renderer = await renderScreen();
+  await act(async () => { await findByLabel(renderer, 'Choose Going RSVP').props.onPress(); });
+  expect(alertSpy).toHaveBeenCalledWith('Could not update RSVP', expect.stringContaining('try again'));
+});
+
 async function flushEffects() {
   await act(async () => {
     await Promise.resolve();

@@ -1,8 +1,12 @@
 import * as Sentry from "@sentry/nextjs";
+import { redactUploadTelemetry } from "@ambo/utils";
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   enabled: process.env.NODE_ENV === "production",
+  beforeSend: redactUploadTelemetry,
+  beforeSendTransaction: redactUploadTelemetry,
+  beforeBreadcrumb: redactUploadTelemetry,
 
   // Performance monitoring: sample 10% of transactions in production
   tracesSampleRate: 0.1,

@@ -18,6 +18,14 @@ function buildRequest(pathname: string, token?: string): NextRequest {
 }
 
 describe("Middleware - Smoke / Route Protection @smoke", () => {
+  it.each(['/api/posts', '/api/posts/uploads'])('lets %s validate mobile Bearer authentication in its handler', async path => {
+    const response = await middleware(new NextRequest(`http://localhost:3000${path}`, {
+      method: 'POST', headers: { Authorization: 'Bearer mobile-session' },
+    }));
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.status).toBe(200);
+  });
+
   it("allows /login without a session (login page is reachable)", async () => {
     const res = await middleware(buildRequest("/login"));
     // NextResponse.next() — not a redirect

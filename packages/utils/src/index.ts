@@ -1,5 +1,8 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+export { publishPost, PostUploadError } from './postUpload';
+export type { PostUploadAttempt } from './postUpload';
+export { redactUploadTelemetry } from './uploadTelemetry';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))

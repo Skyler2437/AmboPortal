@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * posts INSERT → notify admins; if poster is admin/superadmin, also notify students
+ * posts INSERT → notify staff and students, excluding the author and opt-outs.
  */
 async function handleNewPost(record: Record<string, unknown>) {
     const userId = record.user_id as string;
@@ -121,20 +121,21 @@ async function handleNewPost(record: Record<string, unknown>) {
             url: "/admin/posts",
             mobilePath: "/(admin)/posts",
         },
-        userId
+        userId,
+        "new_posts",
     );
 
-    // 2. If poster is admin/superadmin, also notify students
-    if (user.role === "admin" || user.role === "superadmin") {
+    if (["student", "admin", "superadmin"].includes(user.role)) {
         await sendNotificationToRole(
             "student",
             {
-                title: `New Announcement from ${user.first_name}`,
+                title: `New Post from ${user.first_name}`,
                 body: truncatedBody,
                 url: "/student/posts",
                 mobilePath: "/(student)/posts",
             },
-            userId
+            userId,
+            "new_posts",
         );
     }
 }

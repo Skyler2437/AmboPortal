@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { reportOperationError } from '@/lib/reportOperationError';
 import type { EventComment, EventRSVP, EventRSVPOption, RSVPStatus } from '@ambo/database';
 
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL || '';
@@ -106,13 +107,11 @@ export function useEventDetail(eventId: string, userId: string) {
     setMyRsvpExplanation(null);
     setRsvps(rsvps.filter((r: any) => r.user_id !== userId));
 
-    const { error } = await supabase
-      .from('event_rsvps')
-      .delete()
-      .eq('event_id', eventId)
-      .eq('user_id', userId);
-
-    if (error) {
+    try {
+      const { error } = await supabase.from('event_rsvps').delete()
+        .eq('event_id', eventId).eq('user_id', userId);
+      if (error) throw error;
+    } catch (error) {
       // Revert on failure
       setMyRsvp(prevMyRsvp);
       setMyRsvpOptionId(prevMyRsvpOptionId);
@@ -120,10 +119,11 @@ export function useEventDetail(eventId: string, userId: string) {
         prevRsvps.find((rsvp) => rsvp.user_id === userId)?.explanation || null,
       );
       setRsvps(prevRsvps);
-      return error;
+      reportOperationError('rsvp.remove', error);
+      return new Error('Could not update your RSVP. Check your connection and try again.');
     }
 
-    await fetchData();
+    await fetchData().catch(error => { setLoading(false); reportOperationError('rsvp.refresh', error); });
     triggerGcalSync();
     return null;
   }, [eventId, userId, fetchData, triggerGcalSync, myRsvp, myRsvpOptionId, rsvps]);
@@ -169,24 +169,26 @@ export function useEventDetail(eventId: string, userId: string) {
         setRsvps(updated);
       }
 
-      const { error } = await supabase.rpc('save_event_rsvp', {
-        target_event_id: eventId,
-        target_status: status,
-        target_rsvp_option_id: rsvpOptionId || null,
-        target_explanation: status === 'maybe' || status === 'no' ? cleanExplanation : null,
-      });
-
-      if (error) {
+      try {
+        const { error } = await supabase.rpc('save_event_rsvp', {
+          target_event_id: eventId,
+          target_status: status,
+          target_rsvp_option_id: rsvpOptionId || null,
+          target_explanation: status === 'maybe' || status === 'no' ? cleanExplanation : null,
+        });
+        if (error) throw error;
+      } catch (error) {
         // Revert optimistic update on failure
         setMyRsvp(prevMyRsvp);
         setMyRsvpOptionId(prevMyRsvpOptionId);
         setMyRsvpExplanation(prevMyRsvpExplanation);
         setRsvps(prevRsvps);
-        return error;
+        reportOperationError('rsvp.save', error);
+        return new Error('Could not save your RSVP. Check your connection and try again.');
       }
 
       // Refetch to get server-truth (includes any new RSVPs from others)
-      await fetchData();
+      await fetchData().catch(error => { setLoading(false); reportOperationError('rsvp.refresh', error); });
 
       // Trigger Google Calendar sync in background
       triggerGcalSync();

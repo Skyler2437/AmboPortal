@@ -1,6 +1,7 @@
 import 'react-native-gesture-handler';
 import { useEffect, useRef } from 'react';
 import * as Sentry from '@sentry/react-native';
+import { redactUploadTelemetry } from '@ambo/utils';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -21,6 +22,9 @@ Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
   enabled: !__DEV__,
   tracesSampleRate: 0.1,
+  beforeSend: redactUploadTelemetry,
+  beforeSendTransaction: redactUploadTelemetry,
+  beforeBreadcrumb: redactUploadTelemetry,
   enableAutoSessionTracking: true,
 });
 

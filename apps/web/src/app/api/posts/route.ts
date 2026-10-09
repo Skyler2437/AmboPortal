@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { createAdminClient } from "@ambo/database/admin-client";
-import { postSchema, checkContentLength, MAX_FILE_SIZE, checkFileExtension } from "@/lib/validations";
+import { postSchema } from "@/lib/validations";
 import { parsePagination, buildPaginatedResponse } from "@/lib/pagination";
-import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit";
+import { communityActor, readBody, fail } from "@/lib/community/server";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { createUploadPlan, verifyUploadTicket, uploadFileSchema, POST_UPLOAD_BUCKET, type UploadTicket } from "@/lib/postUploads";
+import { reportOperationError } from "@/lib/reportOperationError";
 import { sanitizeText } from "@/lib/sanitize";
 
-const POST_ATTACHMENTS_BUCKET = "post-attachments";
-const MAX_POST_ATTACHMENTS = 5;
 
 export async function GET(req: NextRequest) {
     try {
@@ -75,139 +76,84 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: Request) {
-    const session = await getSession();
-    if (!session) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Rate limit: 10 requests per 5 minutes
-    const rateLimitResult = await checkRateLimit(getRateLimitKey(req, "posts"), {
-        maxRequests: 10,
-        windowSeconds: 300,
-    });
-    if (!rateLimitResult.allowed) {
-        return NextResponse.json(
-            { error: "Too many posts. Please wait before posting again." },
-            { status: 429 }
-        );
-    }
-
-    const contentType = req.headers.get("content-type") || "";
-    const isMultipart = contentType.includes("multipart/form-data");
-
-    let content: string;
-    let files: File[] = [];
-
-    if (isMultipart) {
-        // Multipart upload (with possible attachments)
-        const form = await req.formData();
-        const rawContent = String(form.get("content") || "");
+    try {
+        const auth = await communityActor(req);
+        if (auth.response) return auth.response;
+        const limited = await checkRateLimit(`posts:${auth.actor.userId}`, { maxRequests: 10, windowSeconds: 300 });
+        if (!limited.allowed) return fail("Too many posts. Please wait before posting again.", 429);
+        const storage = auth.db.storage.from(POST_UPLOAD_BUCKET);
+        let rawContent: unknown;
+        let plan: UploadTicket;
+        if (req.headers.get("content-type")?.includes("multipart/form-data")) {
+            // Compatibility for already-open web tabs. New clients upload directly.
+            const form = await req.formData();
+            rawContent = form.get("content");
+            const files = form.getAll("files").filter((file): file is File => file instanceof File);
+            const parsedFiles = uploadFileSchema.array().max(5).safeParse(files.map(file => ({
+                name: file.name, size: file.size, type: file.type,
+            })));
+            if (!parsedFiles.success) return fail("Choose up to 5 supported files, each between 1 byte and 10MB.");
+            if (!postSchema.safeParse({ content: rawContent }).success) return fail("Enter post text between 1 and 5,000 characters.");
+            plan = createUploadPlan(auth.actor.userId, parsedFiles.data);
+            // Upload before publishing. Any failure leaves the post unpublished.
+            for (let index = 0; index < files.length; index++) {
+                const file = files[index];
+                const { error } = await storage.upload(plan.files[index].path, file, { upsert: false, contentType: plan.files[index].type });
+                if (error) {
+                    reportOperationError("post.upload", error);
+                    return fail("An attachment could not upload. Please try again.", 503);
+                }
+            }
+        } else {
+            const body = await readBody(req) as { content?: unknown; upload_ticket?: unknown } | null;
+            rawContent = body?.content;
+            if (body?.upload_ticket !== undefined) {
+                if (typeof body.upload_ticket !== "string") return fail("Invalid upload. Please try again.");
+                try { plan = await verifyUploadTicket(body.upload_ticket, auth.actor.userId); }
+                catch { return fail("This upload is invalid or expired. Copy your text and start a new post."); }
+            } else {
+                // Older clients can still create text-only posts.
+                plan = createUploadPlan(auth.actor.userId, []);
+            }
+        }
         const parsed = postSchema.safeParse({ content: rawContent });
-        if (!parsed.success) {
-            return NextResponse.json(
-                { error: parsed.error.issues[0].message },
-                { status: 400 }
-            );
-        }
-        content = sanitizeText(parsed.data.content);
-
-        const allFiles = form.getAll("files");
-        files = allFiles.filter((f): f is File => f instanceof File);
-
-        if (files.length > MAX_POST_ATTACHMENTS) {
-            return NextResponse.json(
-                { error: `Maximum ${MAX_POST_ATTACHMENTS} attachments allowed.` },
-                { status: 400 }
-            );
-        }
-        for (const file of files) {
-            if (file.size > MAX_FILE_SIZE) {
-                return NextResponse.json(
-                    { error: `"${file.name}" exceeds the 10MB limit.` },
-                    { status: 413 }
-                );
+        const attachmentOnly = plan.files.length > 0 && typeof rawContent === "string" && !rawContent.trim();
+        if (!parsed.success && !attachmentOnly) return fail(parsed.error.issues[0].message);
+        const content = parsed.success ? sanitizeText(parsed.data.content) : "";
+        if (!content.trim() && !plan.files.length) return fail("Enter some text for your post.");
+        const attachments = [];
+        for (const file of plan.files) {
+            const { data, error } = await storage.info(file.path);
+            if (error || !data) {
+                reportOperationError("post.verify_upload", error);
+                return fail("An attachment has not finished uploading. Please try again.");
             }
-            if (!checkFileExtension(file.name)) {
-                return NextResponse.json(
-                    { error: `File type for "${file.name}" is not allowed.` },
-                    { status: 400 }
-                );
-            }
+            const storedSize = data.size ?? data.metadata?.size;
+            if (Number(storedSize) !== file.size) return fail("An attachment did not upload completely. Remove it and attach it again.");
+            attachments.push({ id: file.id, file_url: storage.getPublicUrl(file.path).data.publicUrl,
+                file_name: file.name, file_type: file.type, file_size: file.size });
         }
-    } else {
-        // JSON path (no attachments)
-        const sizeError = checkContentLength(req);
-        if (sizeError) {
-            return NextResponse.json({ error: sizeError }, { status: 413 });
+        const { error } = await auth.db.rpc("create_post_with_attachments", {
+            target_post_id: plan.postId, target_user_id: auth.actor.userId,
+            target_content: content, target_attachments: attachments,
+        });
+        if (error) {
+            if (error.code === "PT409") return fail("This draft was already published. Check the post feed before starting another post.", 409);
+            reportOperationError("post.publish", error);
+            return fail("Could not save the post. Your draft is still here. Please try again.", 500);
         }
-        const body = await req.json();
-        const parsed = postSchema.safeParse(body);
-        if (!parsed.success) {
-            return NextResponse.json(
-                { error: parsed.error.issues[0].message },
-                { status: 400 }
-            );
+        const { data: post, error: readError } = await auth.db.from("posts")
+            .select("*, users(first_name, last_name, role, avatar_url), post_attachments(id, file_url, file_name, file_type, file_size)")
+            .eq("id", plan.postId).single();
+        if (readError || !post) {
+            reportOperationError("post.confirm", readError);
+            return fail("Could not confirm the post was saved. Please try again.", 503);
         }
-        content = sanitizeText(parsed.data.content);
+        return NextResponse.json({ post: { ...post, attachments: post.post_attachments || [] } });
+    } catch (error) {
+        if (error instanceof SyntaxError) return fail("Invalid request. Please try again.");
+        if (error instanceof Error && error.message === "BODY_TOO_LARGE") return fail("This post is too large.", 413);
+        reportOperationError("post.publish", error);
+        return fail("Could not save the post. Your draft is still here. Please try again.", 500);
     }
-
-    const supabase = createAdminClient();
-    const { data, error } = await supabase
-        .from("posts")
-        .insert({
-            user_id: session.userId,
-            content,
-        })
-        .select(`
-            *,
-            users (
-                first_name,
-                last_name,
-                role,
-                avatar_url
-            )
-        `)
-        .single();
-
-    if (error) {
-        return NextResponse.json({ error: "Request failed" }, { status: 400 });
-    }
-
-    // Upload attachments after the post is created so they reference a real post_id.
-    const uploadedAttachments: Array<{ id: string; file_url: string; file_name: string; file_type: string; file_size: number }> = [];
-    if (files.length > 0) {
-        for (const file of files) {
-            const safeName = file.name.replace(/\s+/g, "_");
-            const path = `${data.id}/${Date.now()}_${safeName}`;
-            const { error: storageError } = await supabase.storage
-                .from(POST_ATTACHMENTS_BUCKET)
-                .upload(path, file, { cacheControl: "3600", upsert: false });
-            if (storageError) {
-                console.error("[posts] storage upload failed", storageError);
-                continue;
-            }
-            const { data: pub } = supabase.storage
-                .from(POST_ATTACHMENTS_BUCKET)
-                .getPublicUrl(path);
-            const { data: attRow, error: attErr } = await supabase
-                .from("post_attachments")
-                .insert({
-                    post_id: data.id,
-                    file_url: pub.publicUrl,
-                    file_name: file.name,
-                    file_type: file.type || "application/octet-stream",
-                    file_size: file.size,
-                    uploaded_by: session.userId,
-                })
-                .select("id, file_url, file_name, file_type, file_size")
-                .single();
-            if (attErr) {
-                console.error("[posts] attachment insert failed", attErr);
-                continue;
-            }
-            if (attRow) uploadedAttachments.push(attRow);
-        }
-    }
-
-    return NextResponse.json({ post: { ...data, attachments: uploadedAttachments } });
 }

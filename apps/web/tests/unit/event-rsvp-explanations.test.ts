@@ -45,6 +45,14 @@ vi.mock("@/lib/googleCalendar", () => ({
 
 import { POST } from "@/app/api/events/rsvp/route";
 
+it('returns an actionable server error when the database cannot save an RSVP', async () => {
+  mockState.rpcError = { message: 'Service role required' };
+  const response = await POST(makeRsvpRequest({ event_id: 'event-1', status: 'going' }));
+  expect(response.status).toBe(500);
+  expect((await response.json()).error).toContain('try again');
+  mockState.rpcError = null;
+});
+
 function makeRsvpRequest(body: Record<string, unknown>) {
   return new Request("http://localhost:3000/api/events/rsvp", {
     method: "POST",

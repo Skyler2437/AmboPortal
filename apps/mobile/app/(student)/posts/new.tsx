@@ -44,8 +44,8 @@ export default function NewPost() {
     try {
       await createPost(userId, content.trim(), attachments);
       router.back();
-    } catch {
-      Alert.alert('Error', 'Failed to create post');
+    } catch (error) {
+      Alert.alert('Could not post', error instanceof Error ? error.message : 'Your draft is still here. Please try again.');
     } finally {
       setPosting(false);
     }
@@ -82,6 +82,7 @@ export default function NewPost() {
           <Avatar.Text size={36} label={initials} style={styles.avatarFallback} />
         )}
         <TextInput
+          editable={!posting}
           placeholder="Share an update…"
           placeholderTextColor={tokens.textMuted}
           value={content}
@@ -92,7 +93,7 @@ export default function NewPost() {
         />
       </View>
 
-      <PostAttachmentBar attachments={attachments} onChange={setAttachments} />
+      <PostAttachmentBar disabled={posting} attachments={attachments} onChange={setAttachments} />
     </KeyboardAvoidingView>
   );
 }

@@ -18,9 +18,10 @@ import { space, radius, type SemanticTokens } from '@/lib/theme';
 interface PostAttachmentBarProps {
   attachments: PickedAsset[];
   onChange: (next: PickedAsset[]) => void;
+  disabled?: boolean;
 }
 
-export function PostAttachmentBar({ attachments, onChange }: PostAttachmentBarProps) {
+export function PostAttachmentBar({ attachments, onChange, disabled = false }: PostAttachmentBarProps) {
   const { styles, tokens } = useThemedStyles(makeStyles);
 
   const add = (asset: PickedAsset) => {
@@ -85,7 +86,7 @@ export function PostAttachmentBar({ attachments, onChange }: PostAttachmentBarPr
                 {a.name}
               </Text>
               <Text variant="bodySmall" style={styles.chipSize}>{formatBytes(a.size)}</Text>
-              <Pressable onPress={() => remove(a.uri)} hitSlop={8} accessibilityLabel={`Remove ${a.name}`}>
+              <Pressable disabled={disabled} onPress={() => remove(a.uri)} hitSlop={8} accessibilityLabel={`Remove ${a.name}`}>
                 <X size={15} color={tokens.textSecondary} />
               </Pressable>
             </View>
@@ -93,10 +94,10 @@ export function PostAttachmentBar({ attachments, onChange }: PostAttachmentBarPr
         </View>
       )}
       <View style={styles.bar}>
-        <Pressable onPress={pickFile} hitSlop={8} accessibilityLabel="Attach file" style={styles.iconBtn}>
+        <Pressable disabled={disabled} onPress={pickFile} hitSlop={8} accessibilityLabel="Attach file" style={styles.iconBtn}>
           <Paperclip size={22} color={tokens.textSecondary} />
         </Pressable>
-        <Pressable onPress={pickImage} hitSlop={8} accessibilityLabel="Attach image" style={styles.iconBtn}>
+        <Pressable disabled={disabled} onPress={pickImage} hitSlop={8} accessibilityLabel="Attach image" style={styles.iconBtn}>
           <ImageIcon size={22} color={tokens.textSecondary} />
         </Pressable>
       </View>

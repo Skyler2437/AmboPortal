@@ -80,6 +80,7 @@ function createEventEngagementState(eventId: string): EventEngagementState {
 
 // ─── RSVP Button Component ──────────────────────────────
 interface RsvpButtonProps {
+  disabled?: boolean;
   label: string;
   icon: string;
   selected: boolean;
@@ -95,11 +96,13 @@ interface RsvpButtonProps {
   accessibilityLabel: string;
 }
 
-function RsvpButton({ label, icon, selected, color, bgColor, borderColor, count, onPress, unselectedColor, accessibilityLabel }: RsvpButtonProps) {
+function RsvpButton({ label, icon, selected, color, bgColor, borderColor, count, onPress, unselectedColor, accessibilityLabel, disabled }: RsvpButtonProps) {
   const { styles, tokens } = useThemedStyles(makeStyles);
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
+      accessibilityState={{ disabled }}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       style={({ pressed }) => [
@@ -122,6 +125,7 @@ function RsvpButton({ label, icon, selected, color, bgColor, borderColor, count,
 
 // ─── RSVP Option Chip Component ─────────────────────────
 interface RsvpOptionChipProps {
+  disabled?: boolean;
   label: string;
   selected: boolean;
   count: number;
@@ -131,11 +135,13 @@ interface RsvpOptionChipProps {
   unselectedColor: string;
 }
 
-function RsvpOptionChip({ label, selected, count, onPress, unselectedColor }: RsvpOptionChipProps) {
+function RsvpOptionChip({ label, selected, count, onPress, unselectedColor, disabled }: RsvpOptionChipProps) {
   const { styles, tokens } = useThemedStyles(makeStyles);
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
+      accessibilityState={{ disabled }}
       accessibilityRole="button"
       accessibilityLabel={`Choose ${label} RSVP`}
       style={({ pressed }) => [
@@ -246,6 +252,18 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
     setRsvpExplanation(myRsvp === status ? myRsvpExplanation || '' : '');
   };
 
+  const saveGoingRsvp = async (optionId?: string) => {
+    if (savingRsvp) return;
+    setSavingRsvp(true);
+    const error = await updateRsvp('going' as RSVPStatus, optionId)
+      .catch(() => new Error('Could not save your RSVP. Please try again.'));
+    setSavingRsvp(false);
+    if (error) {
+      Alert.alert('Could not update RSVP', error.message);
+      AccessibilityInfo.announceForAccessibility('Failed to update RSVP.');
+    }
+  };
+
   const saveRsvpExplanation = async () => {
     if (!rsvpExplanationStatus) return;
     const cleanExplanation = rsvpExplanation.trim();
@@ -256,7 +274,7 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
       rsvpExplanationStatus as RSVPStatus,
       undefined,
       cleanExplanation,
-    );
+    ).catch(() => new Error('Could not save your RSVP. Please try again.'));
     setSavingRsvp(false);
 
     if (error) {
@@ -932,7 +950,8 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                       label={opt.label}
                       selected={isSelected}
                       count={count}
-                      onPress={() => updateRsvp('going' as RSVPStatus, opt.id)}
+                      disabled={savingRsvp}
+                      onPress={() => saveGoingRsvp(opt.id)}
                       unselectedColor={rsvpUnselectedColor}
                     />
                   );
@@ -947,7 +966,8 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                   bgColor={tokens.statusWarnBg}
                   borderColor={tokens.statusWarnBorder}
                   count={maybeCount}
-                  onPress={() => openRsvpExplanation('maybe')}
+                  disabled={savingRsvp}
+                onPress={() => openRsvpExplanation('maybe')}
                   unselectedColor={rsvpUnselectedColor}
                   accessibilityLabel="Choose Maybe RSVP"
                 />
@@ -958,7 +978,8 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                   color={tokens.textMuted}
                   bgColor={tokens.surfaceVariant}
                   borderColor={tokens.border}
-                  onPress={() => openRsvpExplanation('no')}
+                  disabled={savingRsvp}
+                onPress={() => openRsvpExplanation('no')}
                   unselectedColor={rsvpUnselectedColor}
                   accessibilityLabel="Choose Can't Go RSVP"
                 />
@@ -975,7 +996,8 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 bgColor={tokens.statusGoodBg}
                 borderColor={tokens.statusGoodBorder}
                 count={goingCount}
-                onPress={() => updateRsvp('going' as RSVPStatus)}
+                disabled={savingRsvp}
+                onPress={() => saveGoingRsvp()}
                 unselectedColor={rsvpUnselectedColor}
                 accessibilityLabel="Choose Going RSVP"
               />
@@ -987,6 +1009,7 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 bgColor={tokens.statusWarnBg}
                 borderColor={tokens.statusWarnBorder}
                 count={maybeCount}
+                disabled={savingRsvp}
                 onPress={() => openRsvpExplanation('maybe')}
                 unselectedColor={rsvpUnselectedColor}
                 accessibilityLabel="Choose Maybe RSVP"
@@ -998,6 +1021,7 @@ export function EventDetailScreen({ role }: { role: AppRole }) {
                 color={tokens.textMuted}
                 bgColor={tokens.surfaceVariant}
                 borderColor={tokens.border}
+                disabled={savingRsvp}
                 onPress={() => openRsvpExplanation('no')}
                 unselectedColor={rsvpUnselectedColor}
                 accessibilityLabel="Choose Can't Go RSVP"
